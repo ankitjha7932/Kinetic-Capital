@@ -29,7 +29,7 @@ namespace PortfolioManager.Api.Services
             var message = new MimeMessage();
             
             // It is critical that 'FromEmail' is the same as your 'Username' for Gmail
-            var fromEmail = _config["EmailSettings:FromEmail"];
+            var fromEmail = _config["EmailSettings:FromEmail"] ?? _config["EmailSettings__FromEmail"];
             var displayName = "Kinetic Capital";
 
             message.From.Add(new MailboxAddress(displayName, fromEmail));
@@ -67,10 +67,10 @@ namespace PortfolioManager.Api.Services
 
             try
             {
-                var host = _config["EmailSettings:SmtpHost"] ?? "smtp.gmail.com";
-                var port = int.Parse(_config["EmailSettings:SmtpPort"] ?? "587");
-                var username = _config["EmailSettings:Username"];
-                var password = _config["EmailSettings:Password"];
+                var host = _config["EmailSettings:SmtpHost"] ?? _config["EmailSettings__SmtpHost"] ?? "smtp.gmail.com";
+                var port = int.Parse(_config["EmailSettings:SmtpPort"] ?? _config["EmailSettings__SmtpPort"] ?? "587");
+                var username = _config["EmailSettings:Username"] ?? _config["EmailSettings__Username"];
+                var password = _config["EmailSettings:Password"] ?? _config["EmailSettings__Password"];
 
                 // Gmail Port 587 requires StartTls
                 // Gmail Port 465 requires SslOnConnect
