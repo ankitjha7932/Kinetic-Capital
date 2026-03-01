@@ -18,9 +18,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
     {
-        policy.WithOrigins("http://localhost:5173") 
+        policy.WithOrigins("http://localhost:5173", "https://kinetic-capital.vercel.app") 
               .AllowAnyHeader()
-              .AllowAnyMethod();
+              .AllowAnyMethod()
+              .AllowCredentials();
     });
 });
 
@@ -79,7 +80,7 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // 5. Authentication Configuration
-var jwtKey = builder.Configuration["Jwt:Key"]; 
+var jwtKey = builder.Configuration["Jwt:Key"] ?? builder.Configuration["Jwt__Key"];
 if (string.IsNullOrEmpty(jwtKey))
 {
     throw new Exception("JWT Key is missing from appsettings.json. Please add Jwt:Key.");
