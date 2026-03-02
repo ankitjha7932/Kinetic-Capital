@@ -4,12 +4,12 @@ namespace PortfolioManager.Api.Models;
 
 public record RegisterRequest(string Email, string Password, string Otp, string RiskProfile, int InvestmentHorizon, string[] PreferredSectors);
 public record LoginRequest(string Email, string Password);
-public record HoldingRequest(int UserId, string Symbol, decimal Quantity, decimal AvgBuyPrice, DateTime? PurchaseDate = null, string? Tags = null);
+public record HoldingRequest(string UserId, string Symbol, decimal Quantity, decimal AvgBuyPrice, DateTime? PurchaseDate = null, string? Tags = null);
 public record HoldingUpdateRequest(decimal Quantity, decimal AvgBuyPrice);
-public record HoldingResponse(int Id, string Symbol, decimal Quantity, decimal AvgBuyPrice, decimal CurrentPrice, decimal UnrealizedPnl, DateTime PurchaseDate, string? Tags);
+public record HoldingResponse(string Id, string Symbol, decimal Quantity, decimal AvgBuyPrice, decimal CurrentPrice, decimal UnrealizedPnl, DateTime PurchaseDate, string? Tags);
 public class PortfolioSummaryResponse
 {
-    public int UserId { get; set; }
+    public string UserId { get; set; }
     public int TotalHoldings { get; set; }
     public decimal TotalInvested { get; set; }
     public decimal CurrentValue { get; set; }

@@ -11,14 +11,14 @@ public class HoldingsController : ControllerBase
     public HoldingsController(AppDbContext db) => _db = db;
 
     // Helper to get ID from Token
-    private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+    private string GetUserId() => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
 
     // 1. GET /api/holdings/me (Replaces the by-user/{userId} route)
     [HttpGet("me")]
     public async Task<IActionResult> GetMyHoldings()
     {
-        int userId = GetUserId();
-        if (userId == 0) return Unauthorized();
+        string userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var holdings = await _db.Holdings
             .Where(h => h.UserId == userId)
@@ -38,8 +38,15 @@ public class HoldingsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateHolding([FromBody] HoldingRequest request)
     {
-        int userId = GetUserId();
-        if (userId == 0) return Unauthorized();
+        string userId = GetUserId();
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        //check that if in case db got refresh and we don't have that user in table, FE should not allow that user to add stock
+        var userExists = await _db.Users.AnyAsync(u => u.Id == userId);
+        if (!userExists)
+        {
+            return BadRequest("User session expired or database reset. Please re-login.");
+        }
 
         var holding = new Holding
         {
@@ -61,7 +68,7 @@ public class HoldingsController : ControllerBase
     public async Task<IActionResult> UpdateHolding(int id, [FromBody] HoldingUpdateRequest request)
     {
         var holding = await _db.Holdings.FindAsync(id);
-        
+
         // Security Check: Does this holding exist AND belong to the logged-in user?
         if (holding == null || holding.UserId != GetUserId()) return NotFound();
 
@@ -77,7 +84,7 @@ public class HoldingsController : ControllerBase
     public async Task<IActionResult> DeleteHolding(int id)
     {
         var holding = await _db.Holdings.FindAsync(id);
-        
+
         // Security Check
         if (holding == null || holding.UserId != GetUserId()) return NotFound();
 

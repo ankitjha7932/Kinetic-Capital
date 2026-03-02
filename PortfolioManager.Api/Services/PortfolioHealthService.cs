@@ -4,7 +4,7 @@ namespace PortfolioManager.Api.Services;
 
 public class PortfolioHealthService
 {
-    public PortfolioHealthResult Analyze(int userId, List<HoldingResponse> holdings)
+    public PortfolioHealthResult Analyze(string userId, List<HoldingResponse> holdings)
     {
         if (holdings.Count == 0)
         {

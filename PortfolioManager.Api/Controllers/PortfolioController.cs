@@ -25,58 +25,58 @@ public class PortfolioController : ControllerBase
     }
 
     // 1. GET: api/portfolio/summary/{userId}
-    [HttpGet("summary/{userId}")]
-    public async Task<IActionResult> GetSummary(int userId)
+   [HttpGet("summary/{userId}")]
+public async Task<IActionResult> GetSummary(string userId) // FIX: Changed from int to string
+{
+    try
     {
-        try
+        var holdings = await _db.Holdings
+            .Where(h => h.UserId == userId)
+            .ToListAsync();
+
+        var holdingResponses = new List<HoldingResponse>();
+
+        foreach (var h in holdings)
         {
-            var holdings = await _db.Holdings
-                .Where(h => h.UserId == userId)
-                .ToListAsync();
+            decimal livePrice = await _priceService.GetLivePriceAsync(h.Symbol);
 
-            var holdingResponses = new List<HoldingResponse>();
+            // Fallback logic
+            if (livePrice <= 0) livePrice = h.AvgBuyPrice;
 
-            foreach (var h in holdings)
-            {
-                decimal livePrice = await _priceService.GetLivePriceAsync(h.Symbol);
-
-                // Fallback logic
-                if (livePrice <= 0) livePrice = h.AvgBuyPrice;
-
-                holdingResponses.Add(new HoldingResponse(
-                    h.Id,
-                    h.Symbol,
-                    h.Quantity,
-                    h.AvgBuyPrice,
-                    livePrice,
-                    CalculatePnl(h.Quantity, h.AvgBuyPrice, livePrice),
-                    h.BuyDate,
-                    h.Tags ?? "" // Null-safety for tags
-                ));
-            }
-
-            var totalInvested = Math.Round(holdingResponses.Sum(h => h.Quantity * h.AvgBuyPrice), 2);
-            var currentValue = Math.Round(holdingResponses.Sum(h => h.Quantity * h.CurrentPrice), 2);
-
-            return Ok(new PortfolioSummaryResponse
-            {
-                UserId = userId,
-                TotalHoldings = holdingResponses.Count,
-                TotalInvested = totalInvested,
-                CurrentValue = currentValue,
-                TotalPnl = Math.Round(currentValue - totalInvested, 2),
-                Holdings = holdingResponses
-            });
+            holdingResponses.Add(new HoldingResponse(
+                h.Id, // Ensure HoldingResponse 'Id' is also a string
+                h.Symbol,
+                h.Quantity,
+                h.AvgBuyPrice,
+                livePrice,
+                CalculatePnl(h.Quantity, h.AvgBuyPrice, livePrice),
+                h.BuyDate,
+                h.Tags ?? "" 
+            ));
         }
-        catch (Exception ex)
+
+        var totalInvested = Math.Round(holdingResponses.Sum(h => h.Quantity * h.AvgBuyPrice), 2);
+        var currentValue = Math.Round(holdingResponses.Sum(h => h.Quantity * h.CurrentPrice), 2);
+
+        return Ok(new PortfolioSummaryResponse
         {
-            return StatusCode(500, $"Error generating summary: {ex.Message}");
-        }
+            UserId = userId, // Ensure PortfolioSummaryResponse 'UserId' is a string
+            TotalHoldings = holdingResponses.Count,
+            TotalInvested = totalInvested,
+            CurrentValue = currentValue,
+            TotalPnl = Math.Round(currentValue - totalInvested, 2),
+            Holdings = holdingResponses
+        });
     }
+    catch (Exception ex)
+    {
+        return StatusCode(500, $"Error generating summary: {ex.Message}");
+    }
+}
 
     // 2. GET: api/portfolio/analysis?userId={id}
     [HttpGet("analysis")]
-    public async Task<IActionResult> AnalyzeCurrentUser([FromQuery] int userId)
+    public async Task<IActionResult> AnalyzeCurrentUser([FromQuery] string userId)
     {
         var holdings = await _db.Holdings
             .Where(h => h.UserId == userId)
@@ -103,7 +103,7 @@ public class PortfolioController : ControllerBase
 
     // 3. GET: api/portfolio/suggestions?userId={id}
     [HttpGet("suggestions")]
-    public async Task<IActionResult> GetSuggestions([FromQuery] int userId)
+    public async Task<IActionResult> GetSuggestions([FromQuery] string userId)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId);
         if (user == null) return NotFound("User not found.");

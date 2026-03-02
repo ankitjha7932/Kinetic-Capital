@@ -6,12 +6,17 @@ using Microsoft.OpenApi.Models;
 using PortfolioManager.Api.Services;
 using System.Text;
 using System.Net;
+using MongoDB.Driver;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Database Configuration
+// 1. Database Configuration (Updated for MongoDB)
+var mongoUri = builder.Configuration["DATABASE_URL"] ?? "mongodb://localhost:27017";
+var mongoClient = new MongoClient(mongoUri);
+var databaseName = "KineticCapitalDB";
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=portfolio.db"));
+    options.UseMongoDB(mongoClient, databaseName));
 
 // 2. CORS Configuration
 builder.Services.AddCors(options =>
@@ -25,20 +30,18 @@ builder.Services.AddCors(options =>
     });
 });
 
-// 3. Register Application Services (Dependency Injection)
+// 3.  Application Servces
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddMemoryCache();
 
-// Scoped Services
 builder.Services.AddScoped<PortfolioHealthService>();
 builder.Services.AddScoped<StockDetailsService>();
 builder.Services.AddScoped<IEmailService, EmailService>(); 
+builder.Services.AddScoped<StockPriceService>(); 
+builder.Services.AddScoped<NewsService>();      
 
-// --- UPDATED: TYPED HTTP CLIENTS (NO CRUMB LOGIC) ---
-// We register both services as Typed Clients so they get a pre-configured HttpClient.
-// This handles Cookies and Decompression automatically for Yahoo.
-
+// Typed HttpClients for External APIs
 builder.Services.AddHttpClient<StockPriceService>()
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
     {
@@ -55,7 +58,7 @@ builder.Services.AddHttpClient<NewsService>()
         AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
     });
 
-// 4. Swagger Configuration with JWT Support
+// 4. Swagger Configuration
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "PortfolioManager", Version = "v1" });
@@ -83,7 +86,7 @@ builder.Services.AddSwaggerGen(c =>
 var jwtKey = builder.Configuration["Jwt:Key"] ?? builder.Configuration["Jwt__Key"];
 if (string.IsNullOrEmpty(jwtKey))
 {
-    throw new Exception("JWT Key is missing from appsettings.json. Please add Jwt:Key.");
+    throw new Exception("JWT Key is missing. Check environment variables.");
 }
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -104,19 +107,13 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// 6. Database Initialization
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    context.Database.EnsureCreated();
-}
+// 6. Database Initialization (Removed EnsureCreated for MongoDB)
 
 // 7. Middleware Pipeline
-// Always enable Swagger during this phase to test the endpoints easily
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// DEPLOYMENT FIX: Bind to dynamic PORT for Render
+// Render Dynamic Port Binding
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 app.Urls.Add($"http://0.0.0.0:{port}");
 

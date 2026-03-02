@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace PortfolioManager.Api.Models;
 
 public record PortfolioHealthResult(
-    int UserId,
+    string UserId,
     decimal TotalInvested,
     decimal CurrentValue,
     decimal TotalPnl,
@@ -15,7 +15,7 @@ public record PortfolioHealthResult(
 );
 
 public record PositionAdvice(
-    int HoldingId,
+    string HoldingId,
     string Symbol,
     decimal Quantity,
     decimal AvgBuyPrice,

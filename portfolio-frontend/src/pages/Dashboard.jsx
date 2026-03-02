@@ -11,7 +11,7 @@ export default function Dashboard({ userId }) {
   const [viewingStock, setViewingStock] = useState(null);
 
   const fetchData = async () => {
-    if (!userId || userId === "undefined") return;
+    if (!userId || userId === "undefined" || userId === "") return;
     setLoading(true);
     try {
       const [sum, ana, sug] = await Promise.all([

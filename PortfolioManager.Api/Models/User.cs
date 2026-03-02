@@ -2,16 +2,20 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
 
 namespace PortfolioManager.Api.Models
 {
     public class User
     {
-        public int Id { get; set; }
-        public string? FirebaseUid { get; set; } // Add this!
+        [BsonId]
+        [BsonRepresentation(BsonType.ObjectId)]
+        public string Id { get; set; } = ObjectId.GenerateNewId().ToString(); // int -> string
+        public string? FirebaseUid { get; set; }
         public string? Email { get; set; }
-        public string? PasswordHash { get; set; } // Make nullable for OTP users
-        public string? PhoneNumber { get; set; }  // Add this!
+        public string? PasswordHash { get; set; }
+        public string? PhoneNumber { get; set; }
         public string? RiskProfile { get; set; }
         public int InvestmentHorizon { get; set; }
         public string? PreferredSectors { get; set; }
@@ -19,7 +23,9 @@ namespace PortfolioManager.Api.Models
 
     public class Otp
     {
-        public int Id { get; set; }
+        [BsonId]
+        [BsonRepresentation(BsonType.ObjectId)]
+        public string Id { get; set; } = ObjectId.GenerateNewId().ToString();
         public string Email { get; set; } = string.Empty;
         public string HashedOtp { get; set; } = string.Empty;
         public DateTime ExpiresAt { get; set; }
