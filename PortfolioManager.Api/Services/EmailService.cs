@@ -1,12 +1,10 @@
-using MailKit.Net.Smtp;
-using MailKit.Security;
-using MimeKit;
+using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace PortfolioManager.Api.Services
 {
-    // The Interface defines the contract for the service
     public interface IEmailService
     {
         Task SendOtpEmailAsync(string email, string otp);
@@ -16,29 +14,34 @@ namespace PortfolioManager.Api.Services
     {
         private readonly IConfiguration _config;
         private readonly ILogger<EmailService> _logger;
+        private readonly HttpClient _httpClient;
 
         public EmailService(IConfiguration config, ILogger<EmailService> logger)
         {
             _config = config;
             _logger = logger;
+            _httpClient = new HttpClient();
         }
 
         public async Task SendOtpEmailAsync(string email, string otp)
         {
-            // 1. Prepare the email message
-            var message = new MimeMessage();
+            // 1. Retrieve API Key and Sender Email from Environment
+            var apiKey = _config["EmailSettings__ApiKey"] ?? _config["EmailSettings:ApiKey"];
+            var fromEmail = _config["EmailSettings__FromEmail"] ?? _config["EmailSettings:FromEmail"];
 
-            // It is critical that 'FromEmail' is the same as your 'Username' for Gmail
-            var fromEmail = _config["EmailSettings:FromEmail"] ?? _config["EmailSettings__FromEmail"];
-            var displayName = "Kinetic Capital";
-
-            message.From.Add(new MailboxAddress(displayName, fromEmail));
-            message.To.Add(new MailboxAddress("", email));
-            message.Subject = $"{otp} is your verification code";
-
-            var bodyBuilder = new BodyBuilder
+            if (string.IsNullOrEmpty(apiKey))
             {
-                HtmlBody = $"""
+                _logger.LogError("Brevo API Key is missing. Check Render Environment variables.");
+                throw new Exception("Email configuration error.");
+            }
+
+            // 2. Prepare the Brevo API Payload
+            var mailPayload = new
+            {
+                sender = new { email = fromEmail, name = "Kinetic Capital" },
+                to = new[] { new { email = email } },
+                subject = $"{otp} is your verification code",
+                htmlContent = $"""
                 <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
                     <div style="text-align: center; margin-bottom: 20px;">
                         <h2 style="color: #4f46e5; margin: 0;">Verification Code</h2>
@@ -57,46 +60,32 @@ namespace PortfolioManager.Api.Services
                 """
             };
 
-            message.Body = bodyBuilder.ToMessageBody();
-
-            // 2. Configure and use the SMTP Client
-            using var client = new SmtpClient();
-
-            // Optimization: Set a timeout for the connection
-            client.Timeout = 10000; // 10 seconds
+            // 3. Construct the HTTP Request
+            using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
+            request.Headers.Add("api-key", apiKey);
+            request.Content = new StringContent(JsonSerializer.Serialize(mailPayload), Encoding.UTF8, "application/json");
 
             try
             {
-                var host = _config["EmailSettings:SmtpHost"] ?? _config["EmailSettings__SmtpHost"] ?? "smtp.gmail.com";
-                var port = int.Parse(_config["EmailSettings:SmtpPort"] ?? _config["EmailSettings__SmtpPort"] ?? "587");
-                var username = _config["EmailSettings:Username"] ?? _config["EmailSettings__Username"];
-                var password = _config["EmailSettings:Password"] ?? _config["EmailSettings__Password"];
+                _logger.LogInformation("STEP 1: Sending API request to Brevo for {Email}...", email);
+                
+                var response = await _httpClient.SendAsync(request);
 
-                var socketOption = (port == 587) ? SecureSocketOptions.StartTls : SecureSocketOptions.SslOnConnect;
-                client.CheckCertificateRevocation = false;
-
-                // Added Loggers for debugging steps
-                _logger.LogInformation("STEP 1: Connecting to {Host}:{Port} using {Option}...", host, port, socketOption);
-                await client.ConnectAsync(host, port, socketOption);
-
-                _logger.LogInformation("STEP 2: Connected. Authenticating {Username}...", username);
-                await client.AuthenticateAsync(username, password);
-
-                _logger.LogInformation("STEP 3: Authenticated. Sending to {Email}...", email);
-                await client.SendAsync(message);
-
-                _logger.LogInformation("SUCCESS: OTP delivered to {Email}", email);
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("SUCCESS: OTP delivered via Brevo API to {Email}", email);
+                }
+                else
+                {
+                    var errorDetails = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("FAILED: Brevo API returned {Status}. Error: {Error}", response.StatusCode, errorDetails);
+                    throw new Exception($"Email delivery failed: {response.StatusCode}");
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to deliver OTP to {Email}", email);
-                // Throwing allows the AuthController to catch it and notify the frontend
+                _logger.LogError(ex, "CRITICAL: Exception occurred while calling Brevo API for {Email}", email);
                 throw;
-            }
-            finally
-            {
-                // Always disconnect cleanly
-                await client.DisconnectAsync(true);
             }
         }
     }
