@@ -27,7 +27,7 @@ namespace PortfolioManager.Api.Services
         {
             // 1. Prepare the email message
             var message = new MimeMessage();
-            
+
             // It is critical that 'FromEmail' is the same as your 'Username' for Gmail
             var fromEmail = _config["EmailSettings:FromEmail"] ?? _config["EmailSettings__FromEmail"];
             var displayName = "Kinetic Capital";
@@ -61,7 +61,7 @@ namespace PortfolioManager.Api.Services
 
             // 2. Configure and use the SMTP Client
             using var client = new SmtpClient();
-            
+
             // Optimization: Set a timeout for the connection
             client.Timeout = 10000; // 10 seconds
 
@@ -72,27 +72,26 @@ namespace PortfolioManager.Api.Services
                 var username = _config["EmailSettings:Username"] ?? _config["EmailSettings__Username"];
                 var password = _config["EmailSettings:Password"] ?? _config["EmailSettings__Password"];
 
-                // Gmail Port 587 requires StartTls
-                // Gmail Port 465 requires SslOnConnect
                 var socketOption = (port == 587) ? SecureSocketOptions.StartTls : SecureSocketOptions.SslOnConnect;
                 client.CheckCertificateRevocation = false;
 
-                _logger.LogInformation("Attempting to connect to {Host}:{Port} via {Option}", host, port, socketOption);
-
+                // Added Loggers for debugging steps
+                _logger.LogInformation("STEP 1: Connecting to {Host}:{Port} using {Option}...", host, port, socketOption);
                 await client.ConnectAsync(host, port, socketOption);
-                
-                // Authenticate using the App Password
+
+                _logger.LogInformation("STEP 2: Connected. Authenticating {Username}...", username);
                 await client.AuthenticateAsync(username, password);
 
+                _logger.LogInformation("STEP 3: Authenticated. Sending to {Email}...", email);
                 await client.SendAsync(message);
-                
-                _logger.LogInformation("OTP successfully delivered to {Email}", email);
+
+                _logger.LogInformation("SUCCESS: OTP delivered to {Email}", email);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to deliver OTP to {Email}", email);
                 // Throwing allows the AuthController to catch it and notify the frontend
-                throw; 
+                throw;
             }
             finally
             {
