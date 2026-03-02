@@ -74,7 +74,8 @@ namespace PortfolioManager.Api.Services
 
                 // Gmail Port 587 requires StartTls
                 // Gmail Port 465 requires SslOnConnect
-                var socketOption = port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
+                var socketOption = (port == 587) ? SecureSocketOptions.StartTls : SecureSocketOptions.SslOnConnect;
+                client.CheckCertificateRevocation = false;
 
                 _logger.LogInformation("Attempting to connect to {Host}:{Port} via {Option}", host, port, socketOption);
 
