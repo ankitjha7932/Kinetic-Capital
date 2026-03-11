@@ -1,13 +1,13 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using PortfolioManager.Api.Models;
+using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Security.Claims;
 using System.Text;
-using PortfolioManager.Api.Services;
-using System.Linq;
-using System.IdentityModel.Tokens.Jwt;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using PortfolioManager.Api.Models;
+using PortfolioManager.Api.Services;
 using static BCrypt.Net.BCrypt;
 
 namespace PortfolioManager.Api.Controllers;
@@ -39,8 +39,9 @@ public class AuthController : ControllerBase
         {
             // 2. Rate Limiting: Max 3 OTPs per hour per email
             var oneHourAgo = DateTime.UtcNow.AddHours(-1);
-            var recentRequestCount = await _db.Otps
-                .CountAsync(o => o.Email == request.Email && o.CreatedAt > oneHourAgo);
+            var recentRequestCount = await _db.Otps.CountAsync(o =>
+                o.Email == request.Email && o.CreatedAt > oneHourAgo
+            );
 
             if (recentRequestCount >= 3)
                 return StatusCode(429, "Too many requests. Please try again in an hour.");
@@ -61,13 +62,13 @@ public class AuthController : ControllerBase
                 CreatedAt = DateTime.UtcNow,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(10), // 10 minute window
                 Attempts = 0,
-                IsVerified = false
+                IsVerified = false,
             };
 
             _db.Otps.Add(otpRecord);
             await _db.SaveChangesAsync();
 
-            // 6. Send the Email 
+            // 6. Send the Email
             // We await this directly now so you can see errors in your terminal/logs
             try
             {
@@ -91,8 +92,8 @@ public class AuthController : ControllerBase
     [HttpPost("verify-otp")]
     public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpRequest request)
     {
-        var otpRecord = await _db.Otps
-            .Where(o => o.Email == request.Email && !o.IsVerified)
+        var otpRecord = await _db
+            .Otps.Where(o => o.Email == request.Email && !o.IsVerified)
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync();
 
@@ -128,7 +129,7 @@ public class AuthController : ControllerBase
                 Email = request.Email,
                 RiskProfile = "Moderate",
                 InvestmentHorizon = 5,
-                PreferredSectors = ""
+                PreferredSectors = "",
                 // PasswordHash intentionally empty for OTP users
             };
             _db.Users.Add(user);
@@ -153,7 +154,7 @@ public class AuthController : ControllerBase
             PasswordHash = passwordHash,
             RiskProfile = request.RiskProfile,
             InvestmentHorizon = request.InvestmentHorizon,
-            PreferredSectors = string.Join(",", request.PreferredSectors)
+            PreferredSectors = string.Join(",", request.PreferredSectors),
         };
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
@@ -166,7 +167,11 @@ public class AuthController : ControllerBase
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
 
         // Check if user exists and password matches
-        if (user == null || string.IsNullOrEmpty(user.PasswordHash) || !Verify(request.Password, user.PasswordHash))
+        if (
+            user == null
+            || string.IsNullOrEmpty(user.PasswordHash)
+            || !Verify(request.Password, user.PasswordHash)
+        )
         {
             return Unauthorized("Invalid email or password.");
         }
@@ -177,10 +182,13 @@ public class AuthController : ControllerBase
 
     private string GenerateJwtToken(string userId, string email)
     {
-        var claims = new[] {
-        new Claim(ClaimTypes.NameIdentifier, userId),
-        new Claim(ClaimTypes.Email, email)
-    };
+        var claims = new[]
+        {
+            // Use 'Sub' instead of 'NameIdentifier'
+            new Claim(JwtRegisteredClaimNames.Sub, userId),
+            new Claim(JwtRegisteredClaimNames.Email, email),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+        };
 
         // This pulls the long key you pasted into appsettings.json
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
@@ -218,7 +226,7 @@ public class AuthController : ControllerBase
                 PhoneNumber = phone,
                 RiskProfile = "Medium",
                 InvestmentHorizon = 1,
-                PreferredSectors = ""
+                PreferredSectors = "",
             };
             _db.Users.Add(user);
             await _db.SaveChangesAsync();
@@ -240,8 +248,8 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> VerifyOtpRegister([FromBody] RegisterRequest request)
     {
         // 1. Validate OTP first
-        var otpRecord = await _db.Otps
-            .Where(o => o.Email == request.Email && !o.IsVerified)
+        var otpRecord = await _db
+            .Otps.Where(o => o.Email == request.Email && !o.IsVerified)
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync();
 
@@ -259,7 +267,7 @@ public class AuthController : ControllerBase
             PasswordHash = HashPassword(request.Password), // Securely hash the password
             RiskProfile = request.RiskProfile ?? "Moderate",
             InvestmentHorizon = request.InvestmentHorizon,
-            PreferredSectors = string.Join(",", request.PreferredSectors ?? new string[] { })
+            PreferredSectors = string.Join(",", request.PreferredSectors ?? new string[] { }),
         };
 
         _db.Users.Add(user);
@@ -267,6 +275,13 @@ public class AuthController : ControllerBase
         await _db.SaveChangesAsync();
 
         var token = GenerateJwtToken(user.Id.ToString(), user.Email);
-        return Ok(new { token, userId = user.Id, message = "Registration successful!" });
+        return Ok(
+            new
+            {
+                token,
+                userId = user.Id,
+                message = "Registration successful!",
+            }
+        );
     }
 }

@@ -2,19 +2,32 @@ import React from 'react';
 import api from '../api/axios';
 import { Trash2, TrendingUp, TrendingDown, Tag } from 'lucide-react';
 
-// Added onSelectStock to props
 export default function PositionsList({ holdings, onRefresh, onSelectStock }) {
   
   const handleDelete = async (id) => {
-    if (window.confirm("Are you sure you want to remove this holding?")) {
-      try {
-        await api.delete(`/holdings/${id}`);
-        onRefresh();
-      } catch (err) {
-        alert("Delete failed: " + (err.response?.data || err.message));
-      }
+    // 1. Stricter check: Catch null, undefined, "undefined", and empty strings
+    if (!id || id.toString().trim() === "" || id === "undefined") {
+        alert("Error: Holding ID is missing or invalid.");
+        console.error("Delete blocked. Value of id:", id);
+        return;
     }
-  };
+
+    if (window.confirm("Are you sure you want to remove this holding?")) {
+        try {
+            // 2. Log the exact URL being called for debugging
+            console.log(`Calling Delete: /holdings/${id}`);
+            
+            const response = await api.delete(`/holdings/${id.toString().trim()}`);
+            
+            // 3. Success
+            onRefresh();
+        } catch (err) {
+            console.error("Delete API Error:", err);
+            const errorMsg = err.response?.data?.message || err.response?.data || err.message;
+            alert("Delete failed: " + errorMsg);
+        }
+    }
+};
 
   if (!holdings || holdings.length === 0) {
     return (
@@ -48,13 +61,15 @@ export default function PositionsList({ holdings, onRefresh, onSelectStock }) {
           </thead>
           <tbody className="divide-y divide-slate-50">
             {holdings.map((h) => {
+              // DETECT THE CORRECT ID: MongoDB uses _id, but your DTO likely uses id
+              const holdingId = h.id || h._id;
+              
               const pnlPercent = ((h.currentPrice - h.avgBuyPrice) / h.avgBuyPrice) * 100;
               const isProfit = pnlPercent >= 0;
 
               return (
-                <tr key={h.id} className="hover:bg-slate-50/50 transition-colors group">
+                <tr key={holdingId} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-6 py-4">
-                    {/* Minimal Change: Added onClick and cursor-pointer to the container */}
                     <div 
                       className="flex flex-col cursor-pointer group/item" 
                       onClick={() => onSelectStock(h.symbol)}
@@ -85,7 +100,7 @@ export default function PositionsList({ holdings, onRefresh, onSelectStock }) {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button 
-                      onClick={() => handleDelete(h.id)}
+                      onClick={() => handleDelete(holdingId)}
                       className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                     >
                       <Trash2 size={18} />

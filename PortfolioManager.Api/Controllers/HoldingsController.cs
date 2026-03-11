@@ -1,52 +1,71 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using PortfolioManager.Api.Models;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Mvc;
+using MongoDB.Bson;
+using MongoDB.Driver;
+using PortfolioManager.Api.Models;
+
+namespace PortfolioManager.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 public class HoldingsController : ControllerBase
 {
-    private readonly AppDbContext _db;
-    public HoldingsController(AppDbContext db) => _db = db;
+    private readonly IMongoCollection<Holding> _holdings;
+    private readonly IMongoCollection<User> _users;
 
-    // Helper to get ID from Token
-    private string GetUserId() => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+    // CHANGED: Injecting IMongoDatabase instead of IMongoClient
+    // This ensures we use the "KineticCapitalDB" instance configured in Program.cs
+    public HoldingsController(IMongoDatabase database)
+    {
+        _holdings = database.GetCollection<Holding>("Holdings");
+        _users = database.GetCollection<User>("Users");
+    }
 
-    // 1. GET /api/holdings/me (Replaces the by-user/{userId} route)
+    private string GetUserId()
+    {
+        // After clearing the map in Program.cs, this will correctly find "sub"
+        var userId =
+            User.FindFirst("sub")?.Value
+            ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        return userId ?? "";
+    }
+
     [HttpGet("me")]
     public async Task<IActionResult> GetMyHoldings()
     {
         string userId = GetUserId();
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
 
-        var holdings = await _db.Holdings
-            .Where(h => h.UserId == userId)
-            .ToListAsync();
+        var holdings = await _holdings.Find(h => h.UserId == userId).ToListAsync();
 
-        var responses = holdings.Select(h => new HoldingResponse(
-            h.Id, h.Symbol, h.Quantity, h.AvgBuyPrice,
-            2678m, // Simulated live price
-            h.Quantity * (2678m - h.AvgBuyPrice),
-            h.BuyDate, h.Tags
-        )).ToList();
+        var responses = holdings
+            .Select(h => new HoldingResponse(
+                h.Id!,
+                h.Symbol,
+                h.Quantity,
+                h.AvgBuyPrice,
+                2678m,
+                h.Quantity * (2678m - h.AvgBuyPrice),
+                h.BuyDate,
+                h.Tags ?? ""
+            ))
+            .ToList();
 
         return Ok(responses);
     }
 
-    // 2. POST /api/holdings
     [HttpPost]
     public async Task<IActionResult> CreateHolding([FromBody] HoldingRequest request)
     {
         string userId = GetUserId();
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
 
-        //check that if in case db got refresh and we don't have that user in table, FE should not allow that user to add stock
-        var userExists = await _db.Users.AnyAsync(u => u.Id == userId);
+        var userExists = await _users.Find(u => u.Id == userId).AnyAsync();
         if (!userExists)
-        {
-            return BadRequest("User session expired or database reset. Please re-login.");
-        }
+            return BadRequest("User session expired. Please re-login.");
 
         var holding = new Holding
         {
@@ -55,55 +74,117 @@ public class HoldingsController : ControllerBase
             Quantity = request.Quantity,
             AvgBuyPrice = request.AvgBuyPrice,
             BuyDate = request.PurchaseDate ?? DateTime.UtcNow,
-            Tags = request.Tags ?? ""
+            Tags = request.Tags ?? "",
         };
 
-        _db.Holdings.Add(holding);
-        await _db.SaveChangesAsync();
+        await _holdings.InsertOneAsync(holding);
         return CreatedAtAction(nameof(GetHolding), new { id = holding.Id }, holding);
     }
 
-    // 3. PUT /api/holdings/1 (Added Security: Must own the holding)
     [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateHolding(int id, [FromBody] HoldingUpdateRequest request)
+    public async Task<IActionResult> UpdateHolding(
+        string id,
+        [FromBody] HoldingUpdateRequest request
+    )
     {
-        var holding = await _db.Holdings.FindAsync(id);
+        if (!ObjectId.TryParse(id, out _))
+            return BadRequest("Invalid ID format.");
 
-        // Security Check: Does this holding exist AND belong to the logged-in user?
-        if (holding == null || holding.UserId != GetUserId()) return NotFound();
+        string userId = GetUserId();
+        var holding = await _holdings
+            .Find(h => h.Id == id && h.UserId == userId)
+            .FirstOrDefaultAsync();
+
+        if (holding == null)
+            return NotFound();
 
         holding.Quantity = request.Quantity;
         holding.AvgBuyPrice = request.AvgBuyPrice;
 
-        await _db.SaveChangesAsync();
+        await _holdings.ReplaceOneAsync(h => h.Id == id, holding);
         return NoContent();
     }
 
-    // 4. DELETE /api/holdings/1 (Added Security: Must own the holding)
     [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteHolding(int id)
+    public async Task<IActionResult> DeleteHolding(string id)
     {
-        var holding = await _db.Holdings.FindAsync(id);
+        // 1. Debug: Print all claims to the Terminal (Check this in VS Code/Visual Studio)
+        Console.WriteLine("--- Incoming Delete Request Claims ---");
+        foreach (var c in User.Claims)
+        {
+            Console.WriteLine($"CLAIM: {c.Type} = {c.Value}");
+        }
 
-        // Security Check
-        if (holding == null || holding.UserId != GetUserId()) return NotFound();
+        // 2. Extract UserId using the helper
+        string userIdString = GetUserId();
+        Console.WriteLine($"Extracted UserId: '{userIdString}'");
 
-        _db.Holdings.Remove(holding);
-        await _db.SaveChangesAsync();
-        return NoContent();
+        // 3. Validation: Check if IDs are valid 24-digit hex strings
+        if (!MongoDB.Bson.ObjectId.TryParse(id, out var holdingObjectId))
+        {
+            return BadRequest(new { message = $"Invalid Holding ID format: {id}" });
+        }
+
+        if (!MongoDB.Bson.ObjectId.TryParse(userIdString, out var userObjectId))
+        {
+            return Unauthorized(
+                new { message = $"User session invalid. ID in token is: '{userIdString}'" }
+            );
+        }
+
+        try
+        {
+            // 4. Create the filter using the converted ObjectIds
+            // This is crucial for MongoDB Atlas to match the record
+            var filter = Builders<Holding>.Filter.And(
+                Builders<Holding>.Filter.Eq("_id", holdingObjectId),
+                Builders<Holding>.Filter.Eq("UserId", userObjectId)
+            );
+
+            var result = await _holdings.DeleteOneAsync(filter);
+
+            if (result.DeletedCount == 0)
+            {
+                // If it reaches here, the IDs are valid but don't match any record
+                return NotFound(
+                    new { message = "Holding not found or you don't have permission to delete it." }
+                );
+            }
+
+            return NoContent(); // Success
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Database Error: {ex.Message}");
+            return BadRequest(new { message = "An error occurred while deleting." });
+        }
     }
 
-    // GET /api/holdings/1
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetHolding(int id)
+    public async Task<IActionResult> GetHolding(string id)
     {
-        var holding = await _db.Holdings.FindAsync(id);
-        if (holding == null || holding.UserId != GetUserId()) return NotFound();
+        if (!ObjectId.TryParse(id, out _))
+            return BadRequest("Invalid ID format.");
 
-        return Ok(new HoldingResponse(
-            holding.Id, holding.Symbol, holding.Quantity, holding.AvgBuyPrice,
-            2500m, holding.Quantity * (2500m - holding.AvgBuyPrice),
-            holding.BuyDate, holding.Tags
-        ));
+        string userId = GetUserId();
+        var holding = await _holdings
+            .Find(h => h.Id == id && h.UserId == userId)
+            .FirstOrDefaultAsync();
+
+        if (holding == null)
+            return NotFound();
+
+        return Ok(
+            new HoldingResponse(
+                holding.Id!,
+                holding.Symbol,
+                holding.Quantity,
+                holding.AvgBuyPrice,
+                2500m,
+                holding.Quantity * (2500m - holding.AvgBuyPrice),
+                holding.BuyDate,
+                holding.Tags ?? ""
+            )
+        );
     }
 }
