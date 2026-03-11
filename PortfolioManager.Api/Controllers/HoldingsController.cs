@@ -63,22 +63,56 @@ public class HoldingsController : ControllerBase
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        var userExists = await _users.Find(u => u.Id == userId).AnyAsync();
-        if (!userExists)
-            return BadRequest("User session expired. Please re-login.");
+        var symbol = request.Symbol.ToUpper().Trim();
 
-        var holding = new Holding
+        // 1. Check if the user already owns this stock
+        var existingHolding = await _holdings
+            .Find(h => h.UserId == userId && h.Symbol == symbol)
+            .FirstOrDefaultAsync();
+
+        if (existingHolding != null)
         {
-            UserId = userId,
-            Symbol = request.Symbol.ToUpper(),
-            Quantity = request.Quantity,
-            AvgBuyPrice = request.AvgBuyPrice,
-            BuyDate = request.PurchaseDate ?? DateTime.UtcNow,
-            Tags = request.Tags ?? "",
-        };
+            decimal totalQuantity = existingHolding.Quantity + request.Quantity;
 
-        await _holdings.InsertOneAsync(holding);
-        return CreatedAtAction(nameof(GetHolding), new { id = holding.Id }, holding);
+            // 3. Weighted Average Price Calculation
+            decimal currentTotalValue = existingHolding.Quantity * existingHolding.AvgBuyPrice;
+            decimal newPurchaseValue = request.Quantity * request.AvgBuyPrice;
+
+            decimal newAvgPrice = (currentTotalValue + newPurchaseValue) / totalQuantity;
+
+            // 4. Update existing record
+            var update = Builders<Holding>
+                .Update.Set(h => h.Quantity, totalQuantity)
+                .Set(h => h.AvgBuyPrice, Math.Round(newAvgPrice, 2))
+                .Set(h => h.BuyDate, DateTime.UtcNow);
+
+            await _holdings.UpdateOneAsync(h => h.Id == existingHolding.Id, update);
+
+            return Ok(
+                new
+                {
+                    message = "Holding updated",
+                    symbol,
+                    totalQuantity,
+                }
+            );
+        }
+        else
+        {
+            // 5. Create new record
+            var holding = new Holding
+            {
+                UserId = userId,
+                Symbol = symbol,
+                Quantity = request.Quantity,
+                AvgBuyPrice = request.AvgBuyPrice,
+                BuyDate = request.PurchaseDate ?? DateTime.UtcNow,
+                Tags = request.Tags ?? "Equity",
+            };
+
+            await _holdings.InsertOneAsync(holding);
+            return CreatedAtAction(nameof(GetHolding), new { id = holding.Id }, holding);
+        }
     }
 
     [HttpPut("{id}")]
