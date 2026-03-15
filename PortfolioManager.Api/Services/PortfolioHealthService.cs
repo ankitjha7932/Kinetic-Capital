@@ -1,5 +1,6 @@
-using PortfolioManager.Api.Models;
 using System.Collections.Generic;
+using PortfolioManager.Api.Models;
+
 namespace PortfolioManager.Api.Services;
 
 public class PortfolioHealthService
@@ -10,7 +11,10 @@ public class PortfolioHealthService
         {
             return new PortfolioHealthResult(
                 userId,
-                0, 0, 0, 0,
+                0,
+                0,
+                0,
+                0,
                 Score: 0,
                 RatingBand: "Weak",
                 Positions: new(),
@@ -60,21 +64,30 @@ public class PortfolioHealthService
                 reason = "Small move; no immediate action.";
             }
 
-            positions.Add(new PositionAdvice(
-                h.Id,
-                h.Symbol,
-                h.Quantity,
-                h.AvgBuyPrice,
-                h.CurrentPrice,
-                pnlPct,
-                action,
-                reason
-            ));
+            positions.Add(
+                new PositionAdvice(
+                    h.Id,
+                    h.Symbol,
+                    h.Quantity,
+                    h.AvgBuyPrice,
+                    h.CurrentPrice,
+                    pnlPct,
+                    action,
+                    reason
+                )
+            );
         }
 
         // Concentration risk: max single-position weight
         var weights = holdings
-            .Select(h => (h.Symbol, Weight: (h.Quantity * h.CurrentPrice) / (currentValue == 0 ? 1 : currentValue) * 100m))
+            .Select(h =>
+                (
+                    h.Symbol,
+                    Weight: (h.Quantity * h.CurrentPrice)
+                        / (currentValue == 0 ? 1 : currentValue)
+                        * 100m
+                )
+            )
             .ToList();
 
         var maxWeight = weights.Max(w => w.Weight);
@@ -83,26 +96,33 @@ public class PortfolioHealthService
         // Simple scoring: based on totalPnlPct and concentration
         int score = 50; // start neutral
 
-        if (totalPnlPct >= 20) score += 20;
-        else if (totalPnlPct >= 5) score += 10;
-        else if (totalPnlPct <= -20) score -= 20;
-        else if (totalPnlPct <= -5) score -= 10;
+        if (totalPnlPct >= 20)
+            score += 20;
+        else if (totalPnlPct >= 5)
+            score += 10;
+        else if (totalPnlPct <= -20)
+            score -= 20;
+        else if (totalPnlPct <= -5)
+            score -= 10;
 
-        if (highlyConcentrated) score -= 15;
+        if (highlyConcentrated)
+            score -= 15;
 
         // Clamp score
         score = Math.Max(0, Math.Min(100, score));
 
         string band =
-            score >= 70 ? "Good" :
-            score >= 50 ? "Moderate" :
-            "Weak";
+            score >= 70 ? "Good"
+            : score >= 50 ? "Moderate"
+            : "Weak";
 
         var warnings = new List<string>();
         if (highlyConcentrated)
         {
             var top = weights.OrderByDescending(w => w.Weight).First();
-            warnings.Add($"High concentration: {top.Symbol} is {top.Weight:F1}% of your portfolio.");
+            warnings.Add(
+                $"High concentration: {top.Symbol} is {top.Weight:F1}% of your portfolio."
+            );
         }
         if (totalPnlPct < 0)
         {
@@ -129,25 +149,31 @@ public class PortfolioHealthService
         // for now just hardcode it – replace later with API-based screener
         if (preferredSectors.Contains("IT", StringComparer.OrdinalIgnoreCase))
         {
-            list.Add(new RecommendedStock(
-                "TCS",
-                "Large-cap IT with strong profitability; suitable for moderate to low risk profiles.",
-                riskProfile == "High" ? 10 : 5
-            ));
-            list.Add(new RecommendedStock(
-                "INFY",
-                "Well-established IT services company with stable earnings.",
-                riskProfile == "Moderate" ? 8 : 4
-            ));
+            list.Add(
+                new RecommendedStock(
+                    "TCS",
+                    "Large-cap IT with strong profitability; suitable for moderate to low risk profiles.",
+                    riskProfile == "High" ? 10 : 5
+                )
+            );
+            list.Add(
+                new RecommendedStock(
+                    "INFY",
+                    "Well-established IT services company with stable earnings.",
+                    riskProfile == "Moderate" ? 8 : 4
+                )
+            );
         }
 
         if (riskProfile == "High")
         {
-            list.Add(new RecommendedStock(
-                "MIDCAP_IT",
-                "Higher-volatility, high-growth IT midcaps for aggressive allocation.",
-                5
-            ));
+            list.Add(
+                new RecommendedStock(
+                    "MIDCAP_IT",
+                    "Higher-volatility, high-growth IT midcaps for aggressive allocation.",
+                    5
+                )
+            );
         }
 
         return list;

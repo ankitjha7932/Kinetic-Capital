@@ -1,0 +1,34 @@
+# --- ENVIRONMENT & SECRETS ---
+# Critical: Never allow these into the repo
+.env
+*.env
+.env.local
+usersecrets.json
+
+# --- DOTNET CORE / C# ---
+# Ignore build outputs
+[Bb]in/
+[Oo]bj/
+
+# --- USER-SPECIFIC FILES ---
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.sln.docstates
+
+# --- IDE & TOOLS ---
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- DOCKER (If you use it) ---
+.dockerignore
+
+# --- LOGS ---
+*.log
+logs/

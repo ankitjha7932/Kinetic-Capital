@@ -14,12 +14,11 @@ namespace PortfolioManager.Api.Models
         public string Id { get; set; } = ObjectId.GenerateNewId().ToString();
 
         [BsonRepresentation(BsonType.ObjectId)]
-        public string UserId { get; set; } 
+        public string UserId { get; set; }
         public string Symbol { get; set; } = string.Empty;
         public decimal Quantity { get; set; }
         public decimal AvgBuyPrice { get; set; }
         public DateTime BuyDate { get; set; }
         public string Tags { get; set; } = "";
     }
-    
 }

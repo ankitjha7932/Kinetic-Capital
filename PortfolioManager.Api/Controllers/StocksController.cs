@@ -1,9 +1,9 @@
-using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
 using PortfolioManager.Api.Services;
 
 namespace PortfolioManager.Api.Controllers
@@ -22,11 +22,13 @@ namespace PortfolioManager.Api.Controllers
             _detailsService = detailsService;
 
             // Ensure CSV is only parsed once per application lifecycle
-            if (_allStocks.Count > 0) return;
+            if (_allStocks.Count > 0)
+                return;
 
             lock (_lock)
             {
-                if (_allStocks.Count > 0) return;
+                if (_allStocks.Count > 0)
+                    return;
                 LoadStocksFromCsv();
             }
         }
@@ -46,15 +48,19 @@ namespace PortfolioManager.Api.Controllers
                         if (columns.Length > 1)
                         {
                             string rawSymbol = columns[0].Trim();
-                            string nseSymbol = rawSymbol.EndsWith(".NS") ? rawSymbol : $"{rawSymbol}.NS";
+                            string nseSymbol = rawSymbol.EndsWith(".NS")
+                                ? rawSymbol
+                                : $"{rawSymbol}.NS";
                             string faceVal = columns[7].Trim();
 
-                            _allStocks.Add(new StockMaster(
-                                Symbol: nseSymbol,
-                                Name: columns[1].Trim(),
-                                Sector: "Equity",
-                                FaceValue: faceVal
-                            ));
+                            _allStocks.Add(
+                                new StockMaster(
+                                    Symbol: nseSymbol,
+                                    Name: columns[1].Trim(),
+                                    Sector: "Equity",
+                                    FaceValue: faceVal
+                                )
+                            );
                         }
                     }
                 }
@@ -73,8 +79,10 @@ namespace PortfolioManager.Api.Controllers
                 return Ok(Enumerable.Empty<StockMaster>());
 
             var results = _allStocks
-                .Where(s => s.Symbol.Contains(query.ToUpper()) ||
-                            s.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .Where(s =>
+                    s.Symbol.Contains(query.ToUpper())
+                    || s.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                )
                 .Take(15)
                 .ToList();
 
@@ -85,14 +93,23 @@ namespace PortfolioManager.Api.Controllers
         [HttpGet("details/{symbol}")]
         public async Task<IActionResult> GetDetails(string symbol, [FromQuery] string range = "1y")
         {
-            // Ensure we use the proper .NS ticker
-            string ticker = symbol.ToUpper().EndsWith(".NS") ? symbol.ToUpper() : $"{symbol.ToUpper()}.NS";
+            string ticker = symbol.ToUpper().EndsWith(".NS")
+                ? symbol.ToUpper()
+                : $"{symbol.ToUpper()}.NS";
 
-            var localStock = _allStocks.FirstOrDefault(s => s.Symbol.Equals(ticker, StringComparison.OrdinalIgnoreCase));
-            string faceValue = localStock?.FaceValue ?? "N/A";
+            // 1. Fetch FaceValue from the CSV list (as you were doing before)
+            var localStock = _allStocks.FirstOrDefault(s =>
+                s.Symbol.Equals(ticker, StringComparison.OrdinalIgnoreCase)
+            );
 
-            // Pass the range (e.g., "1m", "6m", "5y") to the service
-            var details = await _detailsService.GetStockDetailsAsync(ticker, range, faceValue);
+            string faceValueFromCsv = localStock?.FaceValue ?? "N/A";
+
+            // 2. Pass the CSV-sourced faceValue to the service
+            var details = await _detailsService.GetStockDetailsAsync(
+                ticker,
+                range,
+                faceValueFromCsv
+            );
 
             if (details == null)
                 return NotFound(new { message = $"Details unavailable for {ticker}" });
@@ -103,22 +120,27 @@ namespace PortfolioManager.Api.Controllers
         [HttpGet("analyze/{symbol}")]
         public IActionResult GetAnalysis(string symbol)
         {
-            var stock = _allStocks.FirstOrDefault(s => s.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase));
-            if (stock == null) return NotFound();
+            var stock = _allStocks.FirstOrDefault(s =>
+                s.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)
+            );
+            if (stock == null)
+                return NotFound();
 
             var random = new Random();
             var sentiments = new[] { "Bullish", "Neutral", "Accumulating", "Bearish" };
             var sentiment = sentiments[random.Next(sentiments.Length)];
 
-            return Ok(new
-            {
-                Symbol = stock.Symbol,
-                Name = stock.Name,
-                Sentiment = sentiment,
-                Summary = $"{stock.Symbol} is currently showing {sentiment.ToLower()} patterns.",
-                RiskScore = random.Next(1, 100),
-                LastUpdated = DateTime.UtcNow
-            });
+            return Ok(
+                new
+                {
+                    Symbol = stock.Symbol,
+                    Name = stock.Name,
+                    Sentiment = sentiment,
+                    Summary = $"{stock.Symbol} is currently showing {sentiment.ToLower()} patterns.",
+                    RiskScore = random.Next(1, 100),
+                    LastUpdated = DateTime.UtcNow,
+                }
+            );
         }
     }
 

@@ -33,5 +33,4 @@ namespace PortfolioManager.Api.Models
         public int Attempts { get; set; } = 0;
         public bool IsVerified { get; set; } = false;
     }
-
 }

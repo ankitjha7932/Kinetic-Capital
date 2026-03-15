@@ -36,13 +36,13 @@ public class NewsService
             string query = Uri.EscapeDataString($"{cleanSymbol} stock news India");
             string url = $"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en";
 
-            // GetStreamAsync is better for XML/RSS 
+            // GetStreamAsync is better for XML/RSS
             var response = await _httpClient.GetStreamAsync(url);
-            
+
             using var xmlReader = XmlReader.Create(response);
             var feed = SyndicationFeed.Load(xmlReader);
 
-            foreach (var item in feed.Items.Take(8)) 
+            foreach (var item in feed.Items.Take(8))
             {
                 // Google RSS Titles are usually "Headline - Publisher"
                 string fullTitle = item.Title.Text;
@@ -56,14 +56,16 @@ public class NewsService
                     cleanTitle = string.Join(" - ", parts.SkipLast(1)).Trim();
                 }
 
-                articles.Add(new NewsArticle(
-                    Title: cleanTitle,
-                    Description: item.Summary?.Text ?? cleanTitle,
-                    Url: item.Links.FirstOrDefault()?.Uri.ToString() ?? "#",
-                    Source: source,
-                    ImageUrl: "", // Google RSS doesn't provide easy thumbnails
-                    PublishedAt: item.PublishDate.DateTime
-                ));
+                articles.Add(
+                    new NewsArticle(
+                        Title: cleanTitle,
+                        Description: item.Summary?.Text ?? cleanTitle,
+                        Url: item.Links.FirstOrDefault()?.Uri.ToString() ?? "#",
+                        Source: source,
+                        ImageUrl: "", // Google RSS doesn't provide easy thumbnails
+                        PublishedAt: item.PublishDate.DateTime
+                    )
+                );
             }
 
             // 3. Store in cache for 30 mins to avoid hitting Google too hard

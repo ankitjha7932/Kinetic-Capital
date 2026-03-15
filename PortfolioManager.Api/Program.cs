@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Text;
+using dotenv.net; // Added
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -9,32 +10,34 @@ using MongoDB.Driver;
 using PortfolioManager.Api.Models;
 using PortfolioManager.Api.Services;
 
+// 1. Load .env file immediately
+DotEnv.Load();
+
 var builder = WebApplication.CreateBuilder(args);
 
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
-// 1. Database Configuration
-// This gets your Atlas string from appsettings.json
-var mongoUri = builder.Configuration["DATABASE_URL"];
+// 2. Database Configuration (Secured)
+// Prioritize .env variables over appsettings.json
+var mongoUri =
+    Environment.GetEnvironmentVariable("DATABASE_URL") ?? builder.Configuration["DATABASE_URL"];
+
 if (string.IsNullOrEmpty(mongoUri))
 {
-    // Fallback only if environment variable is missing
-    mongoUri = "mongodb://localhost:27017";
+    mongoUri = "mongodb://localhost:27017"; // Local fallback
 }
 
 var mongoClient = new MongoClient(mongoUri);
 var databaseName = "KineticCapitalDB";
 
-// Register the client and database for Dependency Injection
 builder.Services.AddSingleton<IMongoClient>(mongoClient);
 builder.Services.AddScoped(sp => mongoClient.GetDatabase(databaseName));
 
-// EF Core Configuration
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMongoDB(mongoClient, databaseName)
 );
 
-// 2. CORS Configuration
+// 3. CORS Configuration
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(
@@ -50,7 +53,7 @@ builder.Services.AddCors(options =>
     );
 });
 
-// 3. Application Services
+// 4. Application Services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddMemoryCache();
@@ -61,10 +64,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<StockPriceService>();
 builder.Services.AddScoped<NewsService>();
 
-// REMOVED the line: builder.Services.AddSingleton<IMongoClient>(new MongoClient("mongodb://localhost:27017"));
-// That line was causing the localhost timeout error!
-
-// Typed HttpClients for External APIs
+// Typed HttpClients
 builder
     .Services.AddHttpClient<StockPriceService>()
     .ConfigurePrimaryHttpMessageHandler(() =>
@@ -87,7 +87,7 @@ builder
         }
     );
 
-// 4. Swagger Configuration
+// 5. Swagger Configuration
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "PortfolioManager", Version = "v1" });
@@ -95,8 +95,7 @@ builder.Services.AddSwaggerGen(c =>
         "Bearer",
         new OpenApiSecurityScheme
         {
-            Description =
-                "JWT Authorization header using the Bearer scheme. Example: \"Bearer {token}\"",
+            Description = "JWT Authorization header using the Bearer scheme.",
             Name = "Authorization",
             In = ParameterLocation.Header,
             Type = SecuritySchemeType.ApiKey,
@@ -121,11 +120,12 @@ builder.Services.AddSwaggerGen(c =>
     );
 });
 
-// 5. Authentication Configuration
-var jwtKey = builder.Configuration["Jwt:Key"] ?? builder.Configuration["Jwt__Key"];
+// 6. Authentication Configuration (Secured)
+var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? builder.Configuration["Jwt:Key"];
+
 if (string.IsNullOrEmpty(jwtKey))
 {
-    throw new Exception("JWT Key is missing. Check environment variables.");
+    throw new Exception("JWT Key is missing. Check your .env file.");
 }
 
 builder
@@ -147,7 +147,7 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// 6. Middleware Pipeline
+// 7. Middleware Pipeline
 app.UseSwagger();
 app.UseSwaggerUI();
 
@@ -160,10 +160,8 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors("FrontendPolicy");
-
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();
