@@ -1,7 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Text;
-using dotenv.net; // Added
+using dotenv.net;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -24,7 +24,7 @@ var mongoUri =
 
 if (string.IsNullOrEmpty(mongoUri))
 {
-    mongoUri = "mongodb://localhost:27017"; // Local fallback
+    mongoUri = "mongodb://localhost:27017"; 
 }
 
 var mongoClient = new MongoClient(mongoUri);
