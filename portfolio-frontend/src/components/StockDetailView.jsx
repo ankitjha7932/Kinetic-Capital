@@ -1,14 +1,20 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   ComposedChart, Line, Bar, Area, XAxis, YAxis, 
   CartesianGrid, Tooltip, ResponsiveContainer, Label 
 } from "recharts";
 import { 
   Loader2, ArrowLeft, TrendingUp, TrendingDown, 
-  Newspaper, ArrowUpRight 
+  Newspaper, ArrowUpRight, Eye, EyeOff 
 } from "lucide-react";
 import api from "../api/axios";
+import FinancialTable from "./FinancialTable";
 
+/**
+ * StockDetailView
+ * A professional financial dashboard view providing technical charts,
+ * key ratios, latest news, and detailed financial statements.
+ */
 export default function StockDetailView({ symbol, onBack }) {
   const [data, setData] = useState(null);
   const [news, setNews] = useState([]);
@@ -16,18 +22,25 @@ export default function StockDetailView({ symbol, onBack }) {
   const [newsLoading, setNewsLoading] = useState(true);
   const [range, setRange] = useState("1y");
 
+  // Multi-table visibility state for financial analysis
+  const [visibleTables, setVisibleTables] = useState({
+    quarters: true,
+    pl: false,
+    balance: false,
+    cash: false
+  });
+
+  // Chart toggle states
   const [showPrice, setShowPrice] = useState(true);
   const [showDMA50, setShowDMA50] = useState(false);
   const [showDMA200, setShowDMA200] = useState(false);
   const [showVolumeAlways, setShowVolumeAlways] = useState(true);
 
-  // 1. FETCH NEWS ONCE: Loaded only on mount/symbol change
   useEffect(() => {
     const fetchNews = async () => {
       setNewsLoading(true);
       try {
         const res = await api.get(`/portfolio/news/${symbol}`);
-        // Limit to latest 7 articles as requested
         setNews(res.data.slice(0, 7)); 
       } catch (err) { 
         console.error("News Fetch Error:", err); 
@@ -38,7 +51,6 @@ export default function StockDetailView({ symbol, onBack }) {
     fetchNews();
   }, [symbol]);
 
-  // 2. FETCH CHART DATA: Triggers on range change
   useEffect(() => {
     const fetchDetails = async () => {
       setLoading(true);
@@ -53,6 +65,10 @@ export default function StockDetailView({ symbol, onBack }) {
     };
     fetchDetails();
   }, [symbol, range]);
+
+  const toggleTable = (id) => {
+    setVisibleTables(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const formatNum = (val, decimals = 2) => {
     if (val === null || val === undefined || val === "N/A") return "N/A";
@@ -78,14 +94,19 @@ export default function StockDetailView({ symbol, onBack }) {
   );
 
   return (
-    <div className="max-w-7xl mx-auto p-4 space-y-6 bg-slate-50 min-h-screen font-sans">
+    <div className="max-w-7xl mx-auto p-4 space-y-8 bg-slate-50 min-h-screen font-sans pb-24">
+      
       {/* HEADER SECTION */}
       <div className="flex justify-between items-center bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ArrowLeft size={20} /></button>
+          <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+            <ArrowLeft size={20} />
+          </button>
           <div>
             <h1 className="text-3xl font-black text-slate-900 leading-tight">{data?.symbol}</h1>
-            <p className="text-slate-400 text-sm font-medium tracking-tight">NSE Index • Updated {new Date(data?.lastUpdate).toLocaleTimeString()}</p>
+            <p className="text-slate-400 text-sm font-medium tracking-tight">
+              NSE Index • Updated {new Date(data?.lastUpdate).toLocaleTimeString()}
+            </p>
           </div>
         </div>
         <div className="text-right">
@@ -114,7 +135,7 @@ export default function StockDetailView({ symbol, onBack }) {
           <RatioItem label="Historical High" value={`₹ ${formatNum(data?.ratios?.historicalHigh)}`} />
         </div>
 
-        {/* NEWS SECTION: Only 5-7 latest items */}
+        {/* NEWS SECTION */}
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
           <div className="p-6 border-b border-slate-50 flex items-center gap-2 bg-slate-50/50">
             <Newspaper className="text-indigo-600" size={18} />
@@ -125,29 +146,25 @@ export default function StockDetailView({ symbol, onBack }) {
               <div className="p-6 space-y-4 animate-pulse">
                 {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-slate-50 rounded-xl" />)}
               </div>
-            ) : news.length > 0 ? (
-              news.map((item, idx) => (
-                <a key={idx} href={item.url} target="_blank" rel="noopener noreferrer" className="group block p-4 hover:bg-slate-50 transition-all">
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-black text-indigo-600 uppercase">{item.source}</span>
-                        <span className="text-[9px] text-slate-400 font-bold uppercase">{new Date(item.publishedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
-                      </div>
-                      <h4 className="text-[12px] font-bold text-slate-700 leading-snug group-hover:text-indigo-600 transition-colors line-clamp-2">{item.title}</h4>
+            ) : news.map((item, idx) => (
+              <a key={idx} href={item.url} target="_blank" rel="noopener noreferrer" className="group block p-4 hover:bg-slate-50 transition-all">
+                <div className="flex justify-between items-start gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black text-indigo-600 uppercase">{item.source}</span>
+                      <span className="text-[9px] text-slate-400 font-bold uppercase">{new Date(item.publishedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
                     </div>
-                    <ArrowUpRight size={14} className="text-slate-300 group-hover:text-indigo-600 shrink-0" />
+                    <h4 className="text-[12px] font-bold text-slate-700 leading-snug group-hover:text-indigo-600 transition-colors line-clamp-2">{item.title}</h4>
                   </div>
-                </a>
-              ))
-            ) : (
-              <div className="p-8 text-center text-slate-400 text-xs italic">No recent news available.</div>
-            )}
+                  <ArrowUpRight size={14} className="text-slate-300 group-hover:text-indigo-600 shrink-0" />
+                </div>
+              </a>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* CHART SECTION: Height reduced as requested */}
+      {/* CHART SECTION */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-8">
           <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
@@ -162,7 +179,6 @@ export default function StockDetailView({ symbol, onBack }) {
           </div>
         </div>
 
-        {/* h-[280px] to lessen height of overall graph */}
         <div className="h-[280px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data?.chartData} margin={{ left: 10, right: 45, bottom: 10, top: 10 }}>
@@ -173,118 +189,77 @@ export default function StockDetailView({ symbol, onBack }) {
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              
-              <XAxis 
-                dataKey="date" 
-                tickFormatter={renderDateTick} 
-                minTickGap={40} 
-                tick={{ fontSize: 10, fontWeight: 600, fill: "#94a3b8" }} 
-                axisLine={false} 
-                tickLine={false} 
-              />
-              
-              {/* VOLUME YAXIS: Domain reduced to 1.1x to significantly increase bar height */}
-              <YAxis 
-                yAxisId="vol" 
-                orientation="left" 
-                domain={[0, (dataMax) => dataMax * 1.1]} 
-                tick={{ fontSize: 9, fill: "#94a3b8", fontWeight: 600 }} 
-                axisLine={false} 
-                tickLine={false}
-                tickFormatter={(val) => val >= 1000000 ? `${(val/1000000).toFixed(1)}M` : val}
-              >
-                <Label 
-                  value="Volume" 
-                  angle={-90} 
-                  position="insideLeft" 
-                  style={{ textAnchor: "middle", fill: "#94a3b8", fontSize: 10, fontWeight: 700 }} 
-                  offset={5} 
-                />
+              <XAxis dataKey="date" tickFormatter={renderDateTick} minTickGap={40} tick={{ fontSize: 10, fontWeight: 600, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="vol" orientation="left" domain={[0, (dataMax) => dataMax * 1.1]} tick={{ fontSize: 9, fill: "#94a3b8", fontWeight: 600 }} axisLine={false} tickLine={false} tickFormatter={(val) => val >= 1000000 ? `${(val/1000000).toFixed(1)}M` : val}>
+                <Label value="Volume" angle={-90} position="insideLeft" style={{ textAnchor: "middle", fill: "#94a3b8", fontSize: 10, fontWeight: 700 }} offset={5} />
               </YAxis>
-
-              <YAxis 
-                yAxisId="price" 
-                orientation="right" 
-                domain={["auto", "auto"]} 
-                tickCount={6} 
-                tick={{ fontSize: 10, fill: "#64748b", fontWeight: 700 }} 
-                axisLine={false} 
-                tickLine={false}
-              >
-                <Label 
-                  value="Price (₹)" 
-                  angle={90} 
-                  position="right" 
-                  style={{ textAnchor: "middle", fill: "#64748b", fontSize: 11, fontWeight: 700 }} 
-                  offset={30} 
-                />
+              <YAxis yAxisId="price" orientation="right" domain={["auto", "auto"]} tickCount={6} tick={{ fontSize: 10, fill: "#64748b", fontWeight: 700 }} axisLine={false} tickLine={false}>
+                <Label value="Price (₹)" angle={90} position="right" style={{ textAnchor: "middle", fill: "#64748b", fontSize: 11, fontWeight: 700 }} offset={30} />
               </YAxis>
-
               <Tooltip content={<CustomTooltip />} cursor={{ stroke: "#94a3b8", strokeWidth: 1, strokeDasharray: "5 5" }} />
-              
-              <Area 
-                yAxisId="price" 
-                type="monotone" 
-                dataKey="price" 
-                stroke="none" 
-                fill="url(#colorTrend)" 
-                connectNulls 
-              />
-              
-              {/* VOLUME BARS: barSize increased to significantly increase width */}
-              {showVolumeAlways && (
-                <Bar 
-                  yAxisId="vol" 
-                  dataKey="volume" 
-                  fill="#475569" 
-                  opacity={0.3} 
-                  barSize={range === "1m" ? 25 : 8} 
-                />
-              )}
-              
-              {showPrice && (
-                <Line 
-                  yAxisId="price" 
-                  type="monotone" 
-                  dataKey="price" 
-                  stroke={themeColor} 
-                  strokeWidth={2.5} 
-                  dot={false} 
-                  activeDot={{ r: 4, strokeWidth: 0 }} 
-                />
-              )}
-              
-              {showDMA50 && (
-                <Line 
-                  yAxisId="price" 
-                  type="monotone" 
-                  dataKey="dmA50" 
-                  stroke="#f59e0b" 
-                  strokeWidth={1.5} 
-                  dot={false} 
-                  connectNulls 
-                />
-              )}
-              
-              {showDMA200 && (
-                <Line 
-                  yAxisId="price" 
-                  type="monotone" 
-                  dataKey="dmA200" 
-                  stroke="#64748b" 
-                  strokeWidth={1.5} 
-                  dot={false} 
-                  connectNulls 
-                />
-              )}
+              <Area yAxisId="price" type="monotone" dataKey="price" stroke="none" fill="url(#colorTrend)" connectNulls />
+              {showVolumeAlways && <Bar yAxisId="vol" dataKey="volume" fill="#475569" opacity={0.3} barSize={range === "1m" ? 25 : 8} />}
+              {showPrice && <Line yAxisId="price" type="monotone" dataKey="price" stroke={themeColor} strokeWidth={2.5} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />}
+              {showDMA50 && <Line yAxisId="price" type="monotone" dataKey="dmA50" stroke="#f59e0b" strokeWidth={1.5} dot={false} connectNulls />}
+              {showDMA200 && <Line yAxisId="price" type="monotone" dataKey="dmA200" stroke="#64748b" strokeWidth={1.5} dot={false} connectNulls />}
             </ComposedChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* FINANCIAL ANALYSIS SECTION */}
+      <div className="space-y-6">
+        <div className="flex items-end justify-between px-2">
+          <div>
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight">Financial Analysis</h2>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">Detailed Statements in Cr.</p>
+          </div>
+        </div>
+        
+        {/* Toggle Controls */}
+        <div className="flex flex-wrap bg-white p-2 rounded-2xl shadow-sm border border-slate-100 gap-2 w-fit">
+          {[
+            { id: 'quarters', label: 'Quarterly Results' },
+            { id: 'pl', label: 'Profit & Loss' },
+            { id: 'balance', label: 'Balance Sheet' },
+            { id: 'cash', label: 'Cash Flow' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => toggleTable(tab.id)}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${
+                visibleTables[tab.id] 
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" 
+                : "bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 border border-transparent hover:border-slate-200"
+              }`}
+            >
+              {visibleTables[tab.id] ? <Eye size={14} /> : <EyeOff size={14} />}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Independent Tables - Rendered as standalone Cards */}
+        <div className="space-y-12">
+          {visibleTables.quarters && (
+            <FinancialTable title="Quarterly Results" data={data?.quarterlyResults} />
+          )}
+          {visibleTables.pl && (
+            <FinancialTable title="Annual Profit & Loss" data={data?.profitAndLoss} />
+          )}
+          {visibleTables.balance && (
+            <FinancialTable title="Balance Sheet" data={data?.balanceSheet} />
+          )}
+          {visibleTables.cash && (
+            <FinancialTable title="Cash Flow Statement" data={data?.cashFlow} />
+          )}
         </div>
       </div>
     </div>
   );
 }
 
+// Sub-components
 const RatioItem = ({ label, value }) => {
   const displayValue = (typeof value === "number") ? value.toLocaleString("en-IN") : (value || "N/A");
   return (
@@ -296,7 +271,13 @@ const RatioItem = ({ label, value }) => {
 };
 
 const ToggleButton = ({ label, active, onClick, color }) => (
-  <button onClick={onClick} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${active ? "bg-white border-slate-200 shadow-sm" : "bg-transparent border-transparent text-slate-400"}`} style={{ color: active ? color : undefined }}>{label}</button>
+  <button 
+    onClick={onClick} 
+    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${active ? "bg-white border-slate-200 shadow-sm" : "bg-transparent border-transparent text-slate-400"}`} 
+    style={{ color: active ? color : undefined }}
+  >
+    {label}
+  </button>
 );
 
 const CustomTooltip = ({ active, payload }) => {
@@ -325,7 +306,7 @@ const CustomTooltip = ({ active, payload }) => {
           <div className="flex justify-between gap-3 pt-0.5 border-t border-slate-800">
             <span className="text-slate-400">Vol:</span>
             <span className="text-slate-300 font-medium">
-              {data.volume >= 1000000 ? `${(data.volume / 1000000).toFixed(1)}M` : data.volume.toLocaleString()}
+              {data.volume >= 1000000 ? `${(data.volume / 1000000).toFixed(1)}M` : (data.volume || 0).toLocaleString()}
             </span>
           </div>
         </div>
