@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom"; 
 import { 
   ComposedChart, Line, Bar, Area, XAxis, YAxis, 
   CartesianGrid, Tooltip, ResponsiveContainer, Label 
@@ -10,12 +11,10 @@ import {
 import api from "../api/axios";
 import FinancialTable from "./FinancialTable";
 
-/**
- * StockDetailView
- * A professional financial dashboard view providing technical charts,
- * key ratios, latest news, and detailed financial statements.
- */
-export default function StockDetailView({ symbol, onBack }) {
+export default function StockDetailView() { 
+  const { symbol } = useParams(); 
+  const navigate = useNavigate();
+
   const [data, setData] = useState(null);
   const [news, setNews] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +36,9 @@ export default function StockDetailView({ symbol, onBack }) {
   const [showVolumeAlways, setShowVolumeAlways] = useState(true);
 
   useEffect(() => {
+    // Guard against undefined symbol
+    if (!symbol || symbol === "undefined") return;
+
     const fetchNews = async () => {
       setNewsLoading(true);
       try {
@@ -52,6 +54,9 @@ export default function StockDetailView({ symbol, onBack }) {
   }, [symbol]);
 
   useEffect(() => {
+    // Guard against undefined symbol
+    if (!symbol || symbol === "undefined") return;
+
     const fetchDetails = async () => {
       setLoading(true);
       try {
@@ -99,11 +104,12 @@ export default function StockDetailView({ symbol, onBack }) {
       {/* HEADER SECTION */}
       <div className="flex justify-between items-center bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+          {/* Updated to use navigate('/') */}
+          <button onClick={() => navigate('/')} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-3xl font-black text-slate-900 leading-tight">{data?.symbol}</h1>
+            <h1 className="text-3xl font-black text-slate-900 leading-tight">{data?.symbol || symbol}</h1>
             <p className="text-slate-400 text-sm font-medium tracking-tight">
               NSE Index • Updated {new Date(data?.lastUpdate).toLocaleTimeString()}
             </p>
