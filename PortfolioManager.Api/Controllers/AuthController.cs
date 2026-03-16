@@ -184,15 +184,22 @@ public class AuthController : ControllerBase
     {
         var claims = new[]
         {
-            // Use 'Sub' instead of 'NameIdentifier'
             new Claim(JwtRegisteredClaimNames.Sub, userId),
             new Claim(JwtRegisteredClaimNames.Email, email),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
 
-        // This pulls the long key you pasted into appsettings.json
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+        var keyString = Environment.GetEnvironmentVariable("JWT_KEY") ?? _config["Jwt:Key"];
 
+        // Safety check: if the key is still the placeholder, it will fail.
+        if (string.IsNullOrEmpty(keyString) || keyString == "Use .env file")
+        {
+            throw new InvalidOperationException(
+                "JWT Secret Key is missing or too short. Check your .env file or Environment Variables."
+            );
+        }
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
