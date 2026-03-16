@@ -25,7 +25,7 @@ public class StockFundamental
     public string ROE { get; set; } = "N/A";
     public string DividendYield { get; set; } = "N/A";
     public string BookValue { get; set; } = "N/A";
-    public string FaceValue { get; set; } = "N/A";
+    public string? FaceValue { get; set; } = "N/A";
 
     public List<FinancialRow> QuarterlyResults { get; set; } = new();
     public List<FinancialRow> ProfitAndLoss { get; set; } = new();
