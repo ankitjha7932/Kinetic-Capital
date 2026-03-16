@@ -1,68 +1,128 @@
 import React from 'react';
+import { TrendingUp, TrendingDown, AlertCircle, Zap } from 'lucide-react';
 
 const FinancialTable = ({ data, title }) => {
-  if (!data || data.length === 0) return (
-    <div className="p-10 text-center text-slate-400 italic bg-white rounded-3xl border border-slate-100">
-      No historical data available for {title}.
-    </div>
-  );
+  const filteredData = data?.filter(row => row.metric !== "Raw PDF") || [];
+  if (filteredData.length === 0) return null;
 
-  // Extract and sort headers (Dates) logic
-  const headers = Object.keys(data[0].values || {}).sort((a, b) => {
-    const parseDate = (s) => {
-      if (s === 'TTM') return new Date(2099, 1, 1);
-      return new Date(s);
-    };
+  const headers = Object.keys(filteredData[0].values || {}).sort((a, b) => {
+    const parseDate = (s) => (s === 'TTM' ? new Date(2099, 1, 1) : new Date(s));
     return parseDate(a) - parseDate(b);
   });
 
+  const latestHeader = headers[headers.length - 1];
+  const prevHeader = headers[headers.length - 2];
+
+  const highlights = filteredData.reduce((acc, row) => {
+    const current = row.values[latestHeader];
+    const prev = row.values[prevHeader];
+    if (current != null && prev != null && prev !== 0) {
+      const change = ((current - prev) / Math.abs(prev)) * 100;
+      if (change >= 50) acc.positive.push(row.metric);
+      else if (change <= -50) acc.negative.push(row.metric);
+    }
+    return acc;
+  }, { positive: [], negative: [] });
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-12">
-      {/* Header Section mimicking Screener.in */}
-      <div className="px-6 py-5 border-b border-slate-100 bg-white">
-        <h3 className="text-xl font-semibold text-slate-800 tracking-tight">{title}</h3>
-        <p className="text-[13px] text-slate-500 mt-1">
-          Consolidated Figures in Rs. Crores / <span className="text-indigo-600 cursor-pointer hover:underline font-medium">View Standalone</span>
-        </p>
+    <div className="space-y-6 mb-20">
+      {/* PERFORMANCE HIGHLIGHT PILLS */}
+      <div className="flex flex-col gap-3">
+        <h2 className="text-2xl font-black text-slate-800 tracking-tight px-2">{title}</h2>
+        {(highlights.positive.length > 0 || highlights.negative.length > 0) && (
+          <div className="flex flex-wrap gap-2 px-2">
+            {highlights.positive.map(m => (
+              <div key={m} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-xl shadow-sm">
+                <Zap size={10} className="text-emerald-600 fill-emerald-600" />
+                <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">{m} Surged</span>
+              </div>
+            ))}
+            {highlights.negative.map(m => (
+              <div key={m} className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-100 rounded-xl shadow-sm">
+                <AlertCircle size={10} className="text-rose-600" />
+                <span className="text-[9px] font-black text-rose-700 uppercase tracking-widest">{m} Dropped</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Table Container with Custom Scrollbar */}
-      <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-slate-200">
-        <table className="min-w-full border-separate border-spacing-0">
-          <thead>
-            <tr className="bg-slate-50/50">
-              <th scope="col" className="sticky left-0 z-20 bg-slate-50 py-3 pl-6 pr-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-200 whitespace-nowrap">
-                Attributes
-              </th>
-              {headers.map((header) => (
-                <th key={header} className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200 whitespace-nowrap">
-                  {header}
+      <div className="bg-white rounded-[2.5rem] shadow-2xl shadow-slate-200/40 border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="min-w-full border-separate border-spacing-0">
+            <thead>
+              <tr>
+                <th className="sticky left-0 z-30 bg-slate-900 px-8 py-6 text-left text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 border-r border-slate-800">
+                  Financial Metrics
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="bg-white">
-            {data.map((row, idx) => (
-              <tr key={idx} className="hover:bg-slate-50/80 transition-colors group">
-                {/* Sticky Row Label */}
-                <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 py-3 pl-6 pr-4 text-[13px] font-medium text-slate-700 border-b border-slate-100 whitespace-nowrap border-r border-slate-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                  <span className="flex items-center gap-1.5 cursor-pointer hover:text-indigo-600 transition-colors">
-                    {row.metric} 
-                    <span className="text-indigo-400 text-[10px] font-bold group-hover:scale-125 transition-transform">+</span>
-                  </span>
-                </td>
-                {/* Numerical Data */}
-                {headers.map((header) => (
-                  <td key={header} className="px-4 py-3 text-[13px] text-right text-slate-600 border-b border-slate-100 tabular-nums whitespace-nowrap">
-                    {row.values[header] !== undefined && row.values[header] !== null 
-                      ? row.values[header].toLocaleString('en-IN') 
-                      : "—"}
-                  </td>
-                ))}
+                {headers.map((header, idx) => {
+                  const isLatest = idx === headers.length - 1;
+                  return (
+                    <th key={header} className={`${isLatest ? 'bg-indigo-900' : 'bg-slate-800'} px-6 py-6 text-right text-[10px] font-black uppercase tracking-widest text-white border-b border-slate-700 min-w-[140px]`}>
+                      {header}
+                    </th>
+                  );
+                })}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            
+            <tbody className="bg-white">
+              {filteredData.map((row, idx) => {
+                const isEven = idx % 2 === 0;
+                // FORCED OPAQUE BACKGROUND COLORS
+                const bgClass = isEven ? 'bg-white' : 'bg-slate-50';
+
+                return (
+                  <tr key={idx} className={`group ${bgClass} hover:bg-indigo-50/80 transition-colors`}>
+                    
+                    {/* STICKY COLUMN: Uniformly Bold & Opaque */}
+                    <td className={`sticky left-0 z-20 px-8 py-6 text-[13px] font-black border-b border-slate-100 
+                      ${bgClass} group-hover:bg-indigo-50 border-r border-slate-100 shadow-[4px_0_10px_rgba(0,0,0,0.06)] text-slate-900`}>
+                      {row.metric}
+                    </td>
+
+                    {headers.map((header, hIdx) => {
+                      const currentVal = row.values[header];
+                      const isLatest = hIdx === headers.length - 1;
+                      
+                      let trendInfo = null;
+                      if (isLatest && hIdx > 0) {
+                          const prevVal = row.values[headers[hIdx - 1]];
+                          if (currentVal != null && prevVal != null && prevVal !== 0) {
+                              const diff = ((currentVal - prevVal) / Math.abs(prevVal)) * 100;
+                              trendInfo = {
+                                  color: diff >= 0 ? "text-emerald-600" : "text-rose-600",
+                                  icon: diff >= 0 ? TrendingUp : TrendingDown,
+                                  percent: Math.abs(diff).toFixed(0)
+                              };
+                          }
+                      }
+
+                      return (
+                        <td key={header} className={`px-6 py-6 text-[13px] text-right border-b border-slate-50 tabular-nums whitespace-nowrap ${isLatest ? 'bg-indigo-50/30' : ''}`}>
+                          <div className="flex flex-col items-end justify-center min-h-[44px]">
+                              {/* Uniform Bold Value for All Rows */}
+                              <span className="text-slate-900 font-black">
+                                  {currentVal != null ? currentVal.toLocaleString('en-IN') : "—"}
+                              </span>
+                              <div className="h-4 flex items-center">
+                                {trendInfo && (
+                                    <span className={`flex items-center text-[10px] font-black ${trendInfo.color}`}>
+                                        <trendInfo.icon size={10} className="mr-0.5" />
+                                        {trendInfo.percent}%
+                                    </span>
+                                )}
+                              </div>
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
