@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import PositionsList from '../components/PositionsList';
-import StockDetailView from '../components/StockDetailView'; // Ensure this exists
 import { TrendingUp, TrendingDown, Activity, Lightbulb, AlertCircle } from 'lucide-react';
 
 export default function Dashboard({ userId }) {
   const [data, setData] = useState({ summary: null, analysis: null, suggestions: [] });
   const [loading, setLoading] = useState(true);
-  // Minimal Change: Added state for stock selection
-  const [viewingStock, setViewingStock] = useState(null);
+  
+  // Use navigate instead of state
+  const navigate = useNavigate();
 
   const fetchData = async () => {
     if (!userId || userId === "undefined" || userId === "") return;
@@ -33,10 +34,7 @@ export default function Dashboard({ userId }) {
     }
   }, [userId]);
 
-  // Minimal Change: Render Detail View if a stock is selected
-  if (viewingStock) {
-    return <StockDetailView symbol={viewingStock} onBack={() => setViewingStock(null)} />;
-  }
+  // App.jsx now handls switching to StockDetailView via the URL.
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-[60vh]">
@@ -46,6 +44,7 @@ export default function Dashboard({ userId }) {
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700">
+      {/* --- STAT CARDS --- */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <StatCard title="Invested" value={`₹${(data.summary?.totalInvested || 0).toLocaleString()}`} icon={<Activity size={20} className="text-blue-500"/>} />
         <StatCard title="Current" value={`₹${(data.summary?.currentValue || 0).toLocaleString()}`} icon={<TrendingUp size={20} className="text-indigo-500"/>} />
@@ -58,6 +57,7 @@ export default function Dashboard({ userId }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* AI Recommendations */}
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
           <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
             <Lightbulb className="text-yellow-500" /> AI Recommendations
@@ -77,6 +77,7 @@ export default function Dashboard({ userId }) {
           </div>
         </div>
 
+        {/* Health Warnings */}
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
           <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
             <AlertCircle className="text-red-500" /> Health Warnings
@@ -95,11 +96,11 @@ export default function Dashboard({ userId }) {
         </div>
       </div>
 
-      {/* Minimal Change: Passed onSelectStock handler */}
+      {/*  Update onSelectStock to use navigate */}
       <PositionsList 
         holdings={data.summary?.holdings || []} 
         onRefresh={fetchData} 
-        onSelectStock={(symbol) => setViewingStock(symbol)}
+        onSelectStock={(symbol) => navigate(`/stock/${symbol}`)}
       />
     </div>
   );
