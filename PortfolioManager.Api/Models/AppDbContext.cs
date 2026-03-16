@@ -13,6 +13,7 @@ namespace PortfolioManager.Api.Models
         public DbSet<UserProfile> UserProfiles { get; set; }
         public DbSet<Holding> Holdings { get; set; }
         public DbSet<Otp> Otps { get; set; }
+        public DbSet<StockFundamental> Stocks { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -23,6 +24,7 @@ namespace PortfolioManager.Api.Models
             modelBuilder.Entity<Holding>().ToCollection("Holdings");
             modelBuilder.Entity<UserProfile>().ToCollection("UserProfiles");
             modelBuilder.Entity<Otp>().ToCollection("Otps");
+            modelBuilder.Entity<StockFundamental>().ToCollection("StocksDeepData");
 
             // 2. Fix the "Shadow State" UserId1 Warning
             // This tells EF Core that 'UserId' is just a property, not a complex relationship

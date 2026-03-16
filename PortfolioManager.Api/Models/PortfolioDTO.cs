@@ -32,7 +32,8 @@ public record HoldingResponse(
     decimal CurrentPrice,
     decimal UnrealizedPnl,
     DateTime PurchaseDate,
-    string? Tags
+    string? Tags,
+    string? MarketCapLabel = null
 );
 
 public class PortfolioSummaryResponse

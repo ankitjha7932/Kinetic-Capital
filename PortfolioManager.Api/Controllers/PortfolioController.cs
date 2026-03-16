@@ -47,6 +47,29 @@ public class PortfolioController : ControllerBase
                 if (livePrice <= 0)
                     livePrice = h.AvgBuyPrice;
 
+                // 1. Fetch from StockFundamental collection
+                var fundamental = await _db.Stocks.FirstOrDefaultAsync(s => s.Symbol == h.Symbol);
+
+                double mCapValue = 0;
+                if (fundamental != null && !string.IsNullOrEmpty(fundamental.MarketCap))
+                {
+                    // 2. Clean string just in case there are commas or "Cr" hiden in other docs
+                    string cleanValue = fundamental
+                        .MarketCap.Replace("Cr", "", StringComparison.OrdinalIgnoreCase)
+                        .Replace(",", "")
+                        .Trim();
+
+                    // 3. Parse using InvariantCulture (essential for financial decimals)
+                    double.TryParse(
+                        cleanValue,
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out mCapValue
+                    );
+                }
+
+                string? marketCapLabel = GetMarketCapLabel(mCapValue);
+
                 holdingResponses.Add(
                     new HoldingResponse(
                         h.Id, // Ensure HoldingResponse 'Id' is also a string
@@ -56,7 +79,8 @@ public class PortfolioController : ControllerBase
                         livePrice,
                         CalculatePnl(h.Quantity, h.AvgBuyPrice, livePrice),
                         h.BuyDate,
-                        h.Tags ?? ""
+                        h.Tags ?? "",
+                        marketCapLabel
                     )
                 );
             }
@@ -88,6 +112,19 @@ public class PortfolioController : ControllerBase
         }
     }
 
+    private string? GetMarketCapLabel(double mCapCr)
+    {
+        if (mCapCr <= 0)
+            return null;
+        if (mCapCr >= 20000)
+            return "LARGE-CAP";
+        if (mCapCr >= 5000)
+            return "MID-CAP";
+        if (mCapCr >= 500)
+            return "SMALL-CAP";
+        return "MICRO-CAP";
+    }
+
     // 2. GET: api/portfolio/analysis?userId={id}
     [HttpGet("analysis")]
     public async Task<IActionResult> AnalyzeCurrentUser([FromQuery] string userId)
@@ -102,6 +139,25 @@ public class PortfolioController : ControllerBase
             if (livePrice <= 0)
                 livePrice = h.AvgBuyPrice;
 
+            var fundamental = await _db.Stocks.FirstOrDefaultAsync(s => s.Symbol == h.Symbol);
+            double mCapValue = 0;
+
+            if (fundamental != null && !string.IsNullOrEmpty(fundamental.MarketCap))
+            {
+                string cleanValue = fundamental
+                    .MarketCap.Replace("Cr", "", StringComparison.OrdinalIgnoreCase)
+                    .Replace(",", "")
+                    .Trim();
+                double.TryParse(
+                    cleanValue,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out mCapValue
+                );
+            }
+
+            string? marketCapLabel = GetMarketCapLabel(mCapValue);
+
             holdingResponses.Add(
                 new HoldingResponse(
                     h.Id,
@@ -111,7 +167,8 @@ public class PortfolioController : ControllerBase
                     livePrice,
                     CalculatePnl(h.Quantity, h.AvgBuyPrice, livePrice),
                     h.BuyDate,
-                    h.Tags ?? ""
+                    h.Tags ?? "",
+                    marketCapLabel
                 )
             );
         }
