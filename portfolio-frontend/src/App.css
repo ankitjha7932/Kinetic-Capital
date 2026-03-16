@@ -1,52 +1,49 @@
-/* 1. Refined Scrollbar: Thinner and more "Pro" */
+/* 1. Pro Scrollbar: Minimal & Floating */
 ::-webkit-scrollbar {
-  width: 6px; /* Slightly thinner */
-  height: 6px; /* For horizontal scrolling tables */
+  width: 5px;
+  height: 5px;
 }
-
 ::-webkit-scrollbar-track {
-  background: transparent; /* Cleaner look */
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #e2e8f0; /* Slate-200 */
-  border-radius: 10px;
+  background: #cbd5e1; /* Slightly darker slate for better visibility */
+  border-radius: 20px;
+  border: 1px solid transparent; /* Creates "floating" effect */
+  background-clip: content-box;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #c7d2fe; /* Light Indigo */
+  background: #6366f1; /* Indigo-500 on hover */
 }
 
-/* 2. Selective Transitions (CRITICAL FIX) 
-   Applying transitions to * causes lag in Recharts and Animations.
-   Better to target specific interactive elements. */
+/* 2. Targeted Transitions: Prevents Chart Lag */
 button, a, input, .tab-transition {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.1s ease, background-color 0.2s ease, opacity 0.2s ease;
+}
+button:active {
+  transform: scale(0.97); /* Physical feedback */
 }
 
-/* 3. Enhanced Glassmorphism */
+/* 3. Glassmorphism: Added subtle border for "Appealing" look */
 .glass-nav {
   background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05); /* Soft border instead of white */
 }
 
-/* 4. Autofill reset (Keeping your logic) */
-input:-webkit-autofill,
-input:-webkit-autofill:hover, 
-input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0px 1000px white inset;
-  transition: background-color 5000s ease-in-out 0s;
-}
-
-/* 5. Sticky Table Shadow Utility 
-   This creates that "Screener" effect where data slides under the metric name */
+/* 4. Sticky Table Shadow: The "Screener" effect */
 .sticky-column-shadow {
-  box-shadow: 4px 0 8px -4px rgba(0, 0, 0, 0.08);
+  box-shadow: 4px 0 12px -4px rgba(0, 0, 0, 0.12); /* Slightly deeper for depth */
 }
 
-/* 6. Hide horizontal scrollbar but keep functionality for the Table Tabs */
+/* 5. Tabular Nums: CRITICAL for Financial Tables */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* 6. No-Scrollbar Utility */
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
