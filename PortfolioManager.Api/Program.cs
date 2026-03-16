@@ -63,6 +63,8 @@ builder.Services.AddScoped<StockDetailsService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<StockPriceService>();
 builder.Services.AddScoped<NewsService>();
+// Register the Analysis Service
+builder.Services.AddScoped<IStockAnalysisService, StockAnalysisService>();
 
 // Typed HttpClients
 builder

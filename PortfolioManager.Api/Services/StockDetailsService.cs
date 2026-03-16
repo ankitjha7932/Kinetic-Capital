@@ -15,7 +15,7 @@ public class StockDetailsService
         _fundamentalCollection = database.GetCollection<StockFundamental>("StocksDeepData");
     }
 
-    public async Task<object?> GetStockDetailsAsync(
+    public async Task<StockDetails?> GetStockDetailsAsync(
         string symbol,
         string range = "1y",
         string faceValue = "N/A"
@@ -30,8 +30,6 @@ public class StockDetailsService
             "3m" => ("3y", "1d", 3),
             "6m" => ("3y", "1d", 6),
             "1y" => ("3y", "1d", 12),
-            "3y" => ("10y", "1wk", 36),
-            "5y" => ("10y", "1wk", 60),
             _ => ("3y", "1d", 12),
         };
 
@@ -47,23 +45,32 @@ public class StockDetailsService
         if (history == null || !history.Prices.Any())
             return null;
 
-        var allPrices = history.Prices.Select(p => p.Close).ToList();
+        var allPrices = history.Prices.Select(p => (decimal)p.Close).ToList();
         decimal currentPrice = allPrices.Last();
         decimal prevPrice = allPrices.Count > 1 ? allPrices[^2] : currentPrice;
         DateTime cutoffDate = DateTime.UtcNow.AddMonths(-cutoffMonths);
 
-        return new
+        return new StockDetails
         {
             Symbol = ticker,
             Industry = fundamentals?.Industry ?? "N/A",
             LastUpdate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-            Ratios = new
+
+            // Map Ratios
+            Ratios = new FundamentalRatios
             {
-                MarketCap = (fundamentals?.MarketCap ?? "N/A")
-                    + (fundamentals?.MarketCap != null ? " Cr" : ""),
                 CurrentPrice = Math.Round(currentPrice, 2),
                 PriceChange = Math.Round(currentPrice - prevPrice, 2),
                 PriceChangePercent = Math.Round(((currentPrice - prevPrice) / prevPrice) * 100, 2),
+                MarketCap =
+                    (fundamentals?.MarketCap ?? "N/A")
+                    + (fundamentals?.MarketCap != null ? " Cr" : ""),
+                StockPE = fundamentals?.StockPE ?? "N/A",
+                ROCE = fundamentals?.ROCE ?? "N/A",
+                ROE = fundamentals?.ROE ?? "N/A",
+                BookValue = fundamentals?.BookValue ?? "N/A",
+                DividendYield = fundamentals?.DividendYield ?? "N/A",
+                FaceValue = faceValue,
                 High52W = Math.Round(
                     allPrices
                         .Where((p, idx) => history.Prices[idx].Date >= DateTime.UtcNow.AddYears(-1))
@@ -80,38 +87,37 @@ public class StockDetailsService
                 ),
                 HistoricalHigh = Math.Round(allPrices.Max(), 2),
                 HistoricalLow = Math.Round(allPrices.Min(), 2),
-                StockPE = fundamentals?.StockPE ?? "N/A",
-                ROCE = fundamentals?.ROCE ?? "N/A",
-                ROE = fundamentals?.ROE ?? "N/A",
-                BookValue = fundamentals?.BookValue ?? "N/A",
-                DividendYield = fundamentals?.DividendYield ?? "N/A",
-                FaceValue = faceValue,
             },
-            // Financial Tables
+
+            // Map Financial Tables
             QuarterlyResults = fundamentals?.QuarterlyResults ?? new(),
             ProfitAndLoss = fundamentals?.ProfitAndLoss ?? new(),
             BalanceSheet = fundamentals?.BalanceSheet ?? new(),
             CashFlow = fundamentals?.CashFlow ?? new(),
             Peers = fundamentals?.Peers ?? new(),
+
+            // Map Chart Data with DMAs
             ChartData = history
                 .Prices.Select(
                     (p, i) =>
-                        new
+                        new ChartDataPoint
                         {
-                            Date = p.Date.ToString("yyyy-MM-dd"),
-                            Price = Math.Round(p.Close, 2),
-                            dmA50 = i < 49
-                                ? null
-                                : (decimal?)
-                                    Math.Round(allPrices.Skip(i - 49).Take(50).Average(), 2),
-                            dmA200 = i < 199
-                                ? null
-                                : (decimal?)
-                                    Math.Round(allPrices.Skip(i - 199).Take(200).Average(), 2),
+                            Date = p.Date,
+                            Price = Math.Round((decimal)p.Close, 2),
                             Volume = p.Volume,
+                            DmA50 =
+                                i < 49
+                                    ? null
+                                    : (decimal?)
+                                        Math.Round(allPrices.Skip(i - 49).Take(50).Average(), 2),
+                            DmA200 =
+                                i < 199
+                                    ? null
+                                    : (decimal?)
+                                        Math.Round(allPrices.Skip(i - 199).Take(200).Average(), 2),
                         }
                 )
-                .Where(d => DateTime.Parse(d.Date) >= cutoffDate)
+                .Where(d => d.Date >= cutoffDate)
                 .ToList(),
         };
     }

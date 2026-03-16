@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using PortfolioManager.Api.Models;
 using PortfolioManager.Api.Services;
 
 namespace PortfolioManager.Api.Controllers
@@ -15,11 +16,16 @@ namespace PortfolioManager.Api.Controllers
         private static readonly List<StockMaster> _allStocks = new();
         private static readonly object _lock = new();
         private readonly StockDetailsService _detailsService;
+        private readonly IStockAnalysisService _analysisService;
 
         // FIXED: The service must be injected via the constructor
-        public StocksController(StockDetailsService detailsService)
+        public StocksController(
+            StockDetailsService detailsService,
+            IStockAnalysisService analysisService
+        )
         {
             _detailsService = detailsService;
+            _analysisService = analysisService;
 
             // Ensure CSV is only parsed once per application lifecycle
             if (_allStocks.Count > 0)
@@ -118,29 +124,34 @@ namespace PortfolioManager.Api.Controllers
         }
 
         [HttpGet("analyze/{symbol}")]
-        public IActionResult GetAnalysis(string symbol)
+        public async Task<IActionResult> GetAnalysis(string symbol)
         {
-            var stock = _allStocks.FirstOrDefault(s =>
-                s.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)
-            );
-            if (stock == null)
-                return NotFound();
+            string ticker = symbol.ToUpper().EndsWith(".NS")
+                ? symbol.ToUpper()
+                : $"{symbol.ToUpper()}.NS";
 
-            var random = new Random();
-            var sentiments = new[] { "Bullish", "Neutral", "Accumulating", "Bearish" };
-            var sentiment = sentiments[random.Next(sentiments.Length)];
+            // Explicitly cast the result to StockDetails
+            var resultObj = await _detailsService.GetStockDetailsAsync(ticker, "1y", "N/A");
 
-            return Ok(
-                new
-                {
-                    Symbol = stock.Symbol,
-                    Name = stock.Name,
-                    Sentiment = sentiment,
-                    Summary = $"{stock.Symbol} is currently showing {sentiment.ToLower()} patterns.",
-                    RiskScore = random.Next(1, 100),
-                    LastUpdated = DateTime.UtcNow,
-                }
-            );
+            if (resultObj == null)
+                return NotFound(new { message = "Stock data not found for analysis" });
+
+            // This explicit cast solves CS0266
+            StockDetails details = (StockDetails)resultObj;
+
+            try
+            {
+                var analysis = _analysisService.AnalyzeStock(details);
+
+                return analysis != null
+                    ? Ok(analysis)
+                    : BadRequest(new { message = "Analysis engine could not process the data" });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Analysis Exception]: {ex.Message}");
+                return StatusCode(500, new { error = "Analysis failed", details = ex.Message });
+            }
         }
     }
 
