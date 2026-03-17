@@ -1,14 +1,26 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import api from '../api/axios';
-import PositionsList from '../components/PositionsList';
-import { TrendingUp, TrendingDown, Activity, Lightbulb, AlertCircle } from 'lucide-react';
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import api from "../api/axios";
+import PositionsList from "../components/PositionsList";
+import {
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  Lightbulb,
+  AlertCircle,
+  Zap,
+  Loader2,
+} from "lucide-react";
 
 export default function Dashboard({ userId }) {
-  const [data, setData] = useState({ summary: null, analysis: null, suggestions: [] });
+  const [data, setData] = useState({
+    summary: null,
+    analysis: null,
+    suggestions: [],
+  });
+  const [infusionStocks, setInfusionStocks] = useState([]); 
   const [loading, setLoading] = useState(true);
-  
-  // Use navigate instead of state
+  const [infusionLoading, setInfusionLoading] = useState(false); 
   const navigate = useNavigate();
 
   const fetchData = async () => {
@@ -18,41 +30,123 @@ export default function Dashboard({ userId }) {
       const [sum, ana, sug] = await Promise.all([
         api.get(`/portfolio/summary/${userId}`),
         api.get(`/portfolio/analysis?userId=${userId}`),
-        api.get(`/portfolio/suggestions?userId=${userId}`)
+        api.get(`/portfolio/suggestions?userId=${userId}`),
       ]);
-      setData({ summary: sum.data, analysis: ana.data, suggestions: sug.data || [] });
+      setData({
+        summary: sum.data,
+        analysis: ana.data,
+        suggestions: sug.data || [],
+      });
+      setLoading(false);
+
+      // Fetch momentum separately to avoid blocking main UI
+      setInfusionLoading(true);
+      api
+        .get("/portfolio/high-infusion")
+        .then((res) => setInfusionStocks(res.data || []))
+        .catch((err) => console.error("Momentum error:", err))
+        .finally(() => setInfusionLoading(false));
     } catch (err) {
       console.error("Fetch error:", err);
-    } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (userId && userId !== "undefined") {
-      fetchData();
-    }
+    if (userId && userId !== "undefined") fetchData();
   }, [userId]);
 
-  // App.jsx now handls switching to StockDetailView via the URL.
-
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-    </div>
-  );
+  if (loading)
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+    );
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700">
       {/* --- STAT CARDS --- */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatCard title="Invested" value={`₹${(data.summary?.totalInvested || 0).toLocaleString()}`} icon={<Activity size={20} className="text-blue-500"/>} />
-        <StatCard title="Current" value={`₹${(data.summary?.currentValue || 0).toLocaleString()}`} icon={<TrendingUp size={20} className="text-indigo-500"/>} />
-        <StatCard title="Total P&L" value={`₹${(data.summary?.totalPnl || 0).toLocaleString()}`} isLoss={(data.summary?.totalPnl || 0) < 0} icon={(data.summary?.totalPnl || 0) >= 0 ? <TrendingUp size={20} className="text-green-500"/> : <TrendingDown size={20} className="text-red-500"/>} />
+        <StatCard
+          title="Invested"
+          value={`₹${(data.summary?.totalInvested || 0).toLocaleString()}`}
+          icon={<Activity size={20} className="text-blue-500" />}
+        />
+        <StatCard
+          title="Current"
+          value={`₹${(data.summary?.currentValue || 0).toLocaleString()}`}
+          icon={<TrendingUp size={20} className="text-indigo-500" />}
+        />
+        <StatCard
+          title="Total P&L"
+          value={`₹${(data.summary?.totalPnl || 0).toLocaleString()}`}
+          isLoss={(data.summary?.totalPnl || 0) < 0}
+          icon={
+            (data.summary?.totalPnl || 0) >= 0 ? (
+              <TrendingUp size={20} className="text-green-500" />
+            ) : (
+              <TrendingDown size={20} className="text-red-500" />
+            )
+          }
+        />
         <div className="bg-indigo-600 p-6 rounded-2xl text-white shadow-lg shadow-indigo-200">
-          <p className="text-xs opacity-80 uppercase font-bold tracking-wider">Portfolio Score</p>
+          <p className="text-xs opacity-80 uppercase font-bold tracking-wider">
+            Portfolio Score
+          </p>
           <p className="text-4xl font-black">{data.analysis?.score || 0}</p>
-          <p className="text-sm font-medium">{data.analysis?.ratingBand || 'Neutral'} Health</p>
+          <p className="text-sm font-medium">
+            {data.analysis?.ratingBand || "Neutral"} Health
+          </p>
+        </div>
+      </div>
+
+      {/* --- MARKET MOMENTUM SECTION --- */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between px-2">
+          <h3 className="text-xl font-bold flex items-center gap-2">
+            <Zap className="text-amber-500 fill-amber-500" size={20} /> Cash Flood
+          </h3>
+          {infusionLoading && (
+            <Loader2 size={16} className="animate-spin text-indigo-500" />
+          )}
+        </div>
+        <div className="flex overflow-x-auto pb-4 gap-4 no-scrollbar min-h-[140px]">
+          {infusionStocks.map((stock) => (
+            <div
+              key={stock.symbol}
+              onClick={() => navigate(`/stock/${stock.symbol}`)}
+              className="flex-shrink-0 w-60 p-5 bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+            >
+              <div className="flex justify-between items-start mb-3">
+                <p className="font-black text-slate-800 group-hover:text-indigo-600 tracking-tight">
+                  {stock.symbol}
+                </p>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${stock.changePercent >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}`}
+                >
+                  {stock.changePercent > 0 ? "+" : ""}
+                  {stock.changePercent}%
+                </span>
+              </div>
+              <div className="flex justify-between items-end">
+                <div>
+                  <p className="text-[9px] font-black text-indigo-500 uppercase tracking-wider">
+                    Market Shift
+                  </p>
+                  <p className="text-lg font-black">{stock.handoverRatio}%</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                    Money Flow
+                  </p>
+                  <p className="text-xs font-black text-slate-700">
+                    ₹{stock.valueTradedCr} Cr
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+          {/* ... rest of the logic ... */}
         </div>
       </div>
 
@@ -65,14 +159,23 @@ export default function Dashboard({ userId }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {(data.suggestions || []).length > 0 ? (
               data.suggestions.map((s, i) => (
-                <div key={i} className="p-4 bg-slate-50 rounded-xl border border-slate-100 border-l-4 border-l-indigo-500">
+                <div
+                  key={i}
+                  className="p-4 bg-slate-50 rounded-xl border border-slate-100 border-l-4 border-l-indigo-500"
+                >
                   <p className="font-black text-indigo-700">{s.symbol}</p>
-                  <p className="text-sm text-slate-600 my-2 leading-relaxed">{s.rationale}</p>
-                  <div className="text-[10px] font-bold uppercase text-slate-400">Suggested: {s.suggestedAllocationPercent}%</div>
+                  <p className="text-sm text-slate-600 my-2 leading-relaxed">
+                    {s.rationale}
+                  </p>
+                  <div className="text-[10px] font-bold uppercase text-slate-400">
+                    Suggested: {s.suggestedAllocationPercent}%
+                  </div>
                 </div>
               ))
             ) : (
-              <p className="text-slate-400 text-sm italic">No suggestions available yet.</p>
+              <p className="text-slate-400 text-sm italic">
+                No suggestions available yet.
+              </p>
             )}
           </div>
         </div>
@@ -85,21 +188,25 @@ export default function Dashboard({ userId }) {
           <div className="space-y-3">
             {(data.analysis?.warnings || []).length > 0 ? (
               data.analysis.warnings.map((w, i) => (
-                <div key={i} className="p-3 bg-red-50 text-red-700 rounded-xl text-xs font-medium border border-red-100">
+                <div
+                  key={i}
+                  className="p-3 bg-red-50 text-red-700 rounded-xl text-xs font-medium border border-red-100"
+                >
                   • {w}
                 </div>
               ))
             ) : (
-              <p className="text-slate-400 text-xs italic">Your portfolio looks healthy!</p>
+              <p className="text-slate-400 text-xs italic">
+                Your portfolio looks healthy!
+              </p>
             )}
           </div>
         </div>
       </div>
 
-      {/*  Update onSelectStock to use navigate */}
-      <PositionsList 
-        holdings={data.summary?.holdings || []} 
-        onRefresh={fetchData} 
+      <PositionsList
+        holdings={data.summary?.holdings || []}
+        onRefresh={fetchData}
         onSelectStock={(symbol) => navigate(`/stock/${symbol}`)}
       />
     </div>
@@ -111,8 +218,14 @@ function StatCard({ title, value, icon, isLoss }) {
     <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
       <div className="flex justify-between items-start">
         <div>
-          <p className="text-xs text-slate-400 uppercase font-bold tracking-widest mb-1">{title}</p>
-          <p className={`text-2xl font-black ${isLoss ? 'text-red-600' : 'text-slate-800'}`}>{value}</p>
+          <p className="text-xs text-slate-400 uppercase font-bold tracking-widest mb-1">
+            {title}
+          </p>
+          <p
+            className={`text-2xl font-black ${isLoss ? "text-red-600" : "text-slate-800"}`}
+          >
+            {value}
+          </p>
         </div>
         <div className="p-2 bg-slate-50 rounded-xl">{icon}</div>
       </div>
