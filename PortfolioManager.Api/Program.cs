@@ -65,6 +65,9 @@ builder.Services.AddScoped<StockPriceService>();
 builder.Services.AddScoped<NewsService>();
 // Register the Analysis Service
 builder.Services.AddScoped<IStockAnalysisService, StockAnalysisService>();
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<MarketService>();
+builder.Services.AddControllers();
 
 // Typed HttpClients
 builder
