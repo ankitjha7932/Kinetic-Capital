@@ -18,7 +18,6 @@ namespace PortfolioManager.Api.Controllers
         private readonly StockDetailsService _detailsService;
         private readonly IStockAnalysisService _analysisService;
 
-        // FIXED: The service must be injected via the constructor
         public StocksController(
             StockDetailsService detailsService,
             IStockAnalysisService analysisService
@@ -27,7 +26,6 @@ namespace PortfolioManager.Api.Controllers
             _detailsService = detailsService;
             _analysisService = analysisService;
 
-            // Ensure CSV is only parsed once per application lifecycle
             if (_allStocks.Count > 0)
                 return;
 
@@ -95,7 +93,6 @@ namespace PortfolioManager.Api.Controllers
             return Ok(results);
         }
 
-        // NEW: Screener-style deep dive endpoint
         [HttpGet("details/{symbol}")]
         public async Task<IActionResult> GetDetails(string symbol, [FromQuery] string range = "1y")
         {
@@ -103,14 +100,12 @@ namespace PortfolioManager.Api.Controllers
                 ? symbol.ToUpper()
                 : $"{symbol.ToUpper()}.NS";
 
-            // 1. Fetch FaceValue from the CSV list (as you were doing before)
             var localStock = _allStocks.FirstOrDefault(s =>
                 s.Symbol.Equals(ticker, StringComparison.OrdinalIgnoreCase)
             );
 
             string faceValueFromCsv = localStock?.FaceValue ?? "N/A";
 
-            // 2. Pass the CSV-sourced faceValue to the service
             var details = await _detailsService.GetStockDetailsAsync(
                 ticker,
                 range,
@@ -130,13 +125,11 @@ namespace PortfolioManager.Api.Controllers
                 ? symbol.ToUpper()
                 : $"{symbol.ToUpper()}.NS";
 
-            // Explicitly cast the result to StockDetails
             var resultObj = await _detailsService.GetStockDetailsAsync(ticker, "1y", "N/A");
 
             if (resultObj == null)
                 return NotFound(new { message = "Stock data not found for analysis" });
 
-            // This explicit cast solves CS0266
             StockDetails details = (StockDetails)resultObj;
 
             try

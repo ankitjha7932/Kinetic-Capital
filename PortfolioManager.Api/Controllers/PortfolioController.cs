@@ -15,18 +15,21 @@ public class PortfolioController : ControllerBase
     private readonly PortfolioHealthService _health;
     private readonly StockPriceService _priceService;
     private readonly NewsService _newsService;
+    private readonly MarketService _marketService;
 
     public PortfolioController(
         AppDbContext db,
         PortfolioHealthService health,
         StockPriceService priceService,
-        NewsService newsService
+        NewsService newsService,
+        MarketService marketService
     )
     {
         _db = db;
         _health = health;
         _priceService = priceService;
         _newsService = newsService;
+        _marketService = marketService;
     }
 
     // 1. GET: api/portfolio/summary/{userId}
@@ -219,6 +222,14 @@ public class PortfolioController : ControllerBase
             return NotFound(new { message = "No news found for this symbol." });
 
         return Ok(news);
+    }
+
+    [HttpGet("high-infusion")]
+    public async Task<IActionResult> GetHighInfusion()
+    {
+        Console.WriteLine(">>> HIT: portfolio/high-infusion endpoint called");
+        var result = await _marketService.GetHighInfusionStocksAsync();
+        return Ok(result);
     }
 
     private decimal CalculatePnl(decimal quantity, decimal avgPrice, decimal currentPrice) =>
