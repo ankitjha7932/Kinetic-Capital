@@ -7,18 +7,36 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace PortfolioManager.Api.Models
 {
+    [BsonIgnoreExtraElements] 
     public class User
     {
-        [BsonId]
+       [BsonId]
         [BsonRepresentation(BsonType.ObjectId)]
-        public string Id { get; set; } = ObjectId.GenerateNewId().ToString(); // int -> string
+        public string Id { get; set; } = ObjectId.GenerateNewId().ToString();
+
+        [BsonElement("firebaseUid")]
         public string? FirebaseUid { get; set; }
+
+        [BsonElement("email")]
         public string? Email { get; set; }
+
+        [BsonElement("passwordHash")]
         public string? PasswordHash { get; set; }
+
+        [BsonElement("phoneNumber")]
         public string? PhoneNumber { get; set; }
+
+        [BsonElement("riskProfile")]
         public string? RiskProfile { get; set; }
+
+        [BsonElement("investmentHorizon")]
         public int InvestmentHorizon { get; set; }
+
+        [BsonElement("preferredSectors")]
         public string? PreferredSectors { get; set; }
+
+        [BsonElement("fullName")]
+        public string? FullName { get; set; }
     }
 
     public class Otp
