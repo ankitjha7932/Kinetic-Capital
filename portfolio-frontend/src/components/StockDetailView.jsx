@@ -574,6 +574,21 @@ export default function StockDetailView() {
               {tab.label}
             </button>
           ))}
+          {/* SMART INSIGHT GUIDE (Retail-Friendly) */}
+          <div className="hidden lg:flex items-center gap-3 ml-4 pl-4 border-l border-slate-100 py-1">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 shadow-inner">
+              <Zap size={16} fill="currentColor" className="animate-pulse" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest leading-none mb-1">
+                Smart Insight
+              </p>
+              <p className="text-[10px] font-bold text-slate-400 leading-tight">
+                Skip the scan. We've highlighted the major <br />
+                quarterly moves in the badges below.
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-12">
