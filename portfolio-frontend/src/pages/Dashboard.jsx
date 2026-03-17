@@ -18,9 +18,9 @@ export default function Dashboard({ userId }) {
     analysis: null,
     suggestions: [],
   });
-  const [infusionStocks, setInfusionStocks] = useState([]); 
+  const [infusionStocks, setInfusionStocks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [infusionLoading, setInfusionLoading] = useState(false); 
+  const [infusionLoading, setInfusionLoading] = useState(false);
   const navigate = useNavigate();
 
   const fetchData = async () => {
@@ -118,17 +118,26 @@ export default function Dashboard({ userId }) {
               className="flex-shrink-0 w-60 p-5 bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer group"
             >
               <div className="flex justify-between items-start mb-3">
-                <p className="font-black text-slate-800 group-hover:text-indigo-600 tracking-tight">
-                  {stock.symbol}
-                </p>
+                <div>
+                  <p className="font-black text-slate-800 group-hover:text-indigo-600 tracking-tight">
+                    {stock.symbol}
+                  </p>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase">
+                    Cap: ₹{stock.marketCapCr} Cr
+                  </p>
+                </div>
                 <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${stock.changePercent >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"}`}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${
+                    stock.changePercent >= 0
+                      ? "bg-emerald-50 text-emerald-600"
+                      : "bg-rose-50 text-rose-600"
+                  }`}
                 >
                   {stock.changePercent > 0 ? "+" : ""}
                   {stock.changePercent}%
                 </span>
               </div>
-              <div className="flex justify-between items-end">
+              <div className="flex justify-between items-end border-t border-slate-50 pt-3">
                 <div>
                   <p className="text-[9px] font-black text-indigo-500 uppercase tracking-wider">
                     Market Shift
@@ -146,7 +155,11 @@ export default function Dashboard({ userId }) {
               </div>
             </div>
           ))}
-          {/* ... rest of the logic ... */}
+          {!infusionLoading && infusionStocks.length === 0 && (
+            <p className="text-slate-400 text-sm italic px-2">
+              Scanning market for major handovers...
+            </p>
+          )}
         </div>
       </div>
 
@@ -222,7 +235,9 @@ function StatCard({ title, value, icon, isLoss }) {
             {title}
           </p>
           <p
-            className={`text-2xl font-black ${isLoss ? "text-red-600" : "text-slate-800"}`}
+            className={`text-2xl font-black ${
+              isLoss ? "text-red-600" : "text-slate-800"
+            }`}
           >
             {value}
           </p>
