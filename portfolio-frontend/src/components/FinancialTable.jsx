@@ -5,6 +5,10 @@ const FinancialTable = ({ data, title }) => {
   const filteredData = data?.filter(row => row.metric !== "Raw PDF") || [];
   if (filteredData.length === 0) return null;
 
+  const tablePrefix = title.toLowerCase().includes('quarter') ? 'quarters' : 
+                      title.toLowerCase().includes('profit') ? 'pl' : 
+                      title.toLowerCase().includes('balance') ? 'balance' : 'cash';
+
   const headers = Object.keys(filteredData[0].values || {}).sort((a, b) => {
     const parseDate = (s) => (s === 'TTM' ? new Date(2099, 1, 1) : new Date(s));
     return parseDate(a) - parseDate(b);
@@ -24,9 +28,11 @@ const FinancialTable = ({ data, title }) => {
     return acc;
   }, { positive: [], negative: [] });
 
+  // Helper to create safe IDs (removes %, Rs, dots, spaces)
+  const getSlug = (text) => text.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+
   return (
     <div className="space-y-6 mb-20">
-      {/* PERFORMANCE HIGHLIGHT PILLS */}
       <div className="flex flex-col gap-3">
         <h2 className="text-2xl font-black text-slate-800 tracking-tight px-2">{title}</h2>
         {(highlights.positive.length > 0 || highlights.negative.length > 0) && (
@@ -69,13 +75,13 @@ const FinancialTable = ({ data, title }) => {
             <tbody className="bg-white">
               {filteredData.map((row, idx) => {
                 const isEven = idx % 2 === 0;
-                // FORCED OPAQUE BACKGROUND COLORS
                 const bgClass = isEven ? 'bg-white' : 'bg-slate-50';
+                
+                // Construct safe ID matching the parent's logic
+                const rowId = `${tablePrefix}-row-${getSlug(row.metric)}`;
 
                 return (
-                  <tr key={idx} className={`group ${bgClass} hover:bg-indigo-50/80 transition-colors`}>
-                    
-                    {/* STICKY COLUMN: Uniformly Bold & Opaque */}
+                  <tr key={idx} id={rowId} className={`group ${bgClass} hover:bg-indigo-50/80 transition-all duration-300 scroll-mt-40`}>
                     <td className={`sticky left-0 z-20 px-8 py-6 text-[13px] font-black border-b border-slate-100 
                       ${bgClass} group-hover:bg-indigo-50 border-r border-slate-100 shadow-[4px_0_10px_rgba(0,0,0,0.06)] text-slate-900`}>
                       {row.metric}
@@ -101,7 +107,6 @@ const FinancialTable = ({ data, title }) => {
                       return (
                         <td key={header} className={`px-6 py-6 text-[13px] text-right border-b border-slate-50 tabular-nums whitespace-nowrap ${isLatest ? 'bg-indigo-50/30' : ''}`}>
                           <div className="flex flex-col items-end justify-center min-h-[44px]">
-                              {/* Uniform Bold Value for All Rows */}
                               <span className="text-slate-900 font-black">
                                   {currentVal != null ? currentVal.toLocaleString('en-IN') : "—"}
                               </span>
