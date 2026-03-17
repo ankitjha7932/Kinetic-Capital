@@ -42,7 +42,7 @@ public class NewsService
             using var xmlReader = XmlReader.Create(response);
             var feed = SyndicationFeed.Load(xmlReader);
 
-            foreach (var item in feed.Items.Take(8))
+            foreach (var item in feed.Items.OrderByDescending(i => i.PublishDate).Take(8))
             {
                 // Google RSS Titles are usually "Headline - Publisher"
                 string fullTitle = item.Title.Text;
