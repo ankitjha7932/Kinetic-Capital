@@ -25,7 +25,7 @@ namespace PortfolioManager.Api.Services
 
         public async Task SendOtpEmailAsync(string email, string otp)
         {
-            // 1. Retrieve API Key and Sender Email from Environment
+            // fetch API Key and Sender Email from Environment
             var apiKey = _config["EmailSettings__ApiKey"] ?? _config["EmailSettings:ApiKey"];
             var fromEmail =
                 _config["EmailSettings__FromEmail"] ?? _config["EmailSettings:FromEmail"];
@@ -36,7 +36,7 @@ namespace PortfolioManager.Api.Services
                 throw new Exception("Email configuration error.");
             }
 
-            // 2. Prepare the Brevo API Payload
+            // Prepare payload
             var mailPayload = new
             {
                 sender = new { email = fromEmail, name = "Kinetic Capital" },
@@ -61,7 +61,7 @@ namespace PortfolioManager.Api.Services
                     """,
             };
 
-            // 3. Construct the HTTP Request
+            // HTTP Request
             using var request = new HttpRequestMessage(
                 HttpMethod.Post,
                 "https://api.brevo.com/v3/smtp/email"

@@ -13,8 +13,6 @@ public class HoldingsController : ControllerBase
     private readonly IMongoCollection<Holding> _holdings;
     private readonly IMongoCollection<User> _users;
 
-    // CHANGED: Injecting IMongoDatabase instead of IMongoClient
-    // This ensures we use the "KineticCapitalDB" instance configured in Program.cs
     public HoldingsController(IMongoDatabase database)
     {
         _holdings = database.GetCollection<Holding>("Holdings");
@@ -23,7 +21,6 @@ public class HoldingsController : ControllerBase
 
     private string GetUserId()
     {
-        // After clearing the map in Program.cs, this will correctly find "sub"
         var userId =
             User.FindFirst("sub")?.Value
             ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -65,7 +62,7 @@ public class HoldingsController : ControllerBase
 
         var symbol = request.Symbol.ToUpper().Trim();
 
-        // 1. Check if the user already owns this stock
+        // Check if the user already owns this stock -> n stock A already present with some avg price, m stocks of A added, then we will calc it accordingly
         var existingHolding = await _holdings
             .Find(h => h.UserId == userId && h.Symbol == symbol)
             .FirstOrDefaultAsync();
@@ -74,13 +71,13 @@ public class HoldingsController : ControllerBase
         {
             decimal totalQuantity = existingHolding.Quantity + request.Quantity;
 
-            // 3. Weighted Average Price Calculation
+            // Weighted Average Price Calculation
             decimal currentTotalValue = existingHolding.Quantity * existingHolding.AvgBuyPrice;
             decimal newPurchaseValue = request.Quantity * request.AvgBuyPrice;
 
             decimal newAvgPrice = (currentTotalValue + newPurchaseValue) / totalQuantity;
 
-            // 4. Update existing record
+            // Update existing record
             var update = Builders<Holding>
                 .Update.Set(h => h.Quantity, totalQuantity)
                 .Set(h => h.AvgBuyPrice, Math.Round(newAvgPrice, 2))
@@ -99,7 +96,7 @@ public class HoldingsController : ControllerBase
         }
         else
         {
-            // 5. Create new record
+            //nhi hai -> create new record
             var holding = new Holding
             {
                 UserId = userId,
@@ -142,18 +139,15 @@ public class HoldingsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteHolding(string id)
     {
-        // 1. Debug: Print all claims to the Terminal (Check this in VS Code/Visual Studio)
         Console.WriteLine("--- Incoming Delete Request Claims ---");
         foreach (var c in User.Claims)
         {
             Console.WriteLine($"CLAIM: {c.Type} = {c.Value}");
         }
 
-        // 2. Extract UserId using the helper
         string userIdString = GetUserId();
         Console.WriteLine($"Extracted UserId: '{userIdString}'");
 
-        // 3. Validation: Check if IDs are valid 24-digit hex strings
         if (!MongoDB.Bson.ObjectId.TryParse(id, out var holdingObjectId))
         {
             return BadRequest(new { message = $"Invalid Holding ID format: {id}" });
@@ -168,8 +162,6 @@ public class HoldingsController : ControllerBase
 
         try
         {
-            // 4. Create the filter using the converted ObjectIds
-            // This is crucial for MongoDB Atlas to match the record
             var filter = Builders<Holding>.Filter.And(
                 Builders<Holding>.Filter.Eq("_id", holdingObjectId),
                 Builders<Holding>.Filter.Eq("UserId", userObjectId)
@@ -179,13 +171,12 @@ public class HoldingsController : ControllerBase
 
             if (result.DeletedCount == 0)
             {
-                // If it reaches here, the IDs are valid but don't match any record
                 return NotFound(
                     new { message = "Holding not found or you don't have permission to delete it." }
                 );
             }
 
-            return NoContent(); // Success
+            return NoContent(); 
         }
         catch (Exception ex)
         {

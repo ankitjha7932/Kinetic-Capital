@@ -8,10 +8,10 @@ public record PortfolioHealthResult(
     decimal CurrentValue,
     decimal TotalPnl,
     decimal TotalPnlPercent,
-    int Score, // 0–100
-    string RatingBand, // "Weak", "Moderate", "Good"
-    List<PositionAdvice> Positions, // per holding advice
-    List<string> Warnings // human-readable issues
+    int Score,
+    string RatingBand,
+    List<PositionAdvice> Positions,
+    List<string> Warnings
 );
 
 public record PositionAdvice(
@@ -21,7 +21,7 @@ public record PositionAdvice(
     decimal AvgBuyPrice,
     decimal CurrentPrice,
     decimal PnlPercent,
-    string Action, // "SELL_FAST", "GRADUAL_SELL", "HOLD", "ACCUMULATE"
+    string Action,
     string Reason
 );
 

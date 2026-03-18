@@ -15,7 +15,7 @@ public class UserController : ControllerBase
         _users = database.GetCollection<User>("Users");
     }
 
-    // GET: api/user/profile/{id}
+    // api/user/profile/{id}
     [HttpGet("profile/{id}")]
     public async Task<IActionResult> GetProfile(string id)
     {
@@ -30,7 +30,7 @@ public class UserController : ControllerBase
         return Ok(user);
     }
 
-    // PUT: api/user/profile/{id}
+    // api/user/profile/{id}
     [HttpPut("profile/{id}")]
     public async Task<IActionResult> UpdateProfile(
         string id,
