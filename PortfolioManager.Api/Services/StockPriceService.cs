@@ -17,7 +17,6 @@ public class StockPriceService
         _httpClient = httpClient;
         _logger = logger;
 
-        // Essential: Yahoo requires a browser-like User-Agent even without a crumb
         _httpClient.DefaultRequestHeaders.Add(
             "User-Agent",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -33,7 +32,6 @@ public class StockPriceService
 
         try
         {
-            // Direct call to query2 without the &crumb parameter
             string url =
                 $"https://query2.finance.yahoo.com/v7/finance/quoteSummary/{ticker}?modules={modules}";
 

@@ -41,7 +41,7 @@ namespace PortfolioManager.Api.Services
 
             int score = 0;
 
-            // 1. Technical Trend (Moving Averages)
+            // Technical Trend (Moving Averages)
             if (d50.HasValue && d50.Value > 0)
             {
                 decimal diff50 = ((price - d50.Value) / d50.Value) * 100;

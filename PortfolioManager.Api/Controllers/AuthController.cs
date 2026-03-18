@@ -27,17 +27,14 @@ public class AuthController : ControllerBase
         _config = config;
     }
 
-    // NEW: Send OTP (Step 1)
     [HttpPost("send-otp")]
     public async Task<IActionResult> SendOtp([FromBody] SendOtpRequest request)
     {
-        // 1. Basic Validation
         if (string.IsNullOrEmpty(request.Email) || !request.Email.Contains("@"))
             return BadRequest("A valid email address is required.");
 
         try
         {
-            // 2. Rate Limiting: Max 3 OTPs per hour per email
             var oneHourAgo = DateTime.UtcNow.AddHours(-1);
             var recentRequestCount = await _db.Otps.CountAsync(o =>
                 o.Email == request.Email && o.CreatedAt > oneHourAgo
@@ -46,21 +43,18 @@ public class AuthController : ControllerBase
             if (recentRequestCount >= 3)
                 return StatusCode(429, "Too many requests. Please try again in an hour.");
 
-            // 3. Generate 6-digit OTP
             var otpCode = Random.Shared.Next(100000, 999999).ToString();
             var hashedOtp = HashPassword(otpCode); // Using BCrypt
 
-            // 4. Cleanup: Remove any existing OTPs for this specific email
             var oldOtps = _db.Otps.Where(o => o.Email == request.Email);
             _db.Otps.RemoveRange(oldOtps);
 
-            // 5. Save new OTP to Database
             var otpRecord = new Otp
             {
                 Email = request.Email,
                 HashedOtp = hashedOtp,
                 CreatedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(10), // 10 minute window
+                ExpiresAt = DateTime.UtcNow.AddMinutes(10), 
                 Attempts = 0,
                 IsVerified = false,
             };
@@ -68,15 +62,12 @@ public class AuthController : ControllerBase
             _db.Otps.Add(otpRecord);
             await _db.SaveChangesAsync();
 
-            // 6. Send the Email
-            // We await this directly now so you can see errors in your terminal/logs
             try
             {
                 await _emailService.SendOtpEmailAsync(request.Email, otpCode);
             }
             catch (Exception ex)
             {
-                // Log the actual error here (ex.Message)
                 return StatusCode(500, "Email delivery failed. Check SMTP configuration.");
             }
 
@@ -88,7 +79,7 @@ public class AuthController : ControllerBase
         }
     }
 
-    // NEW: Verify OTP (Step 2 - login/register)
+    //  Verify OtP (Step 2 - login/register)
     [HttpPost("verify-otp")]
     public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpRequest request)
     {
@@ -130,7 +121,6 @@ public class AuthController : ControllerBase
                 RiskProfile = "Moderate",
                 InvestmentHorizon = 5,
                 PreferredSectors = "",
-                // PasswordHash intentionally empty for OTP users
             };
             _db.Users.Add(user);
             await _db.SaveChangesAsync();
@@ -140,7 +130,6 @@ public class AuthController : ControllerBase
         return Ok(new { token, userId = user.Id });
     }
 
-    // === YOUR EXISTING CODE (UNCHANGED) ===
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
@@ -166,7 +155,7 @@ public class AuthController : ControllerBase
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
 
-        // Check if user exists and password matches
+        // Check if user exists and pasword matches
         if (
             user == null
             || string.IsNullOrEmpty(user.PasswordHash)
@@ -191,7 +180,7 @@ public class AuthController : ControllerBase
 
         var keyString = Environment.GetEnvironmentVariable("JWT_KEY") ?? _config["Jwt:Key"];
 
-        // Safety check: if the key is still the placeholder, it will fail.
+        // Safety Chck: if the key is still the placeholder, it will fail.
         if (string.IsNullOrEmpty(keyString) || keyString == "Use .env file")
         {
             throw new InvalidOperationException(
@@ -271,14 +260,14 @@ public class AuthController : ControllerBase
         var user = new User
         {
             Email = request.Email,
-            PasswordHash = HashPassword(request.Password), // Securely hash the password
+            PasswordHash = HashPassword(request.Password), 
             RiskProfile = request.RiskProfile ?? "Moderate",
             InvestmentHorizon = request.InvestmentHorizon,
             PreferredSectors = string.Join(",", request.PreferredSectors ?? new string[] { }),
         };
 
         _db.Users.Add(user);
-        otpRecord.IsVerified = true; // Mark OTP as used
+        otpRecord.IsVerified = true; 
         await _db.SaveChangesAsync();
 
         var token = GenerateJwtToken(user.Id.ToString(), user.Email);

@@ -20,7 +20,7 @@ public class NewsService
 
     public async Task<List<NewsArticle>> GetStockNewsAsync(string symbol)
     {
-        // 1. Check Cache first (Crucial for performance)
+        // Check Cache first 
         string cacheKey = $"News_{symbol}";
         if (_cache.TryGetValue(cacheKey, out List<NewsArticle>? cachedNews))
         {
@@ -30,13 +30,11 @@ public class NewsService
         var articles = new List<NewsArticle>();
         try
         {
-            // 2. THIS IS THE FIX: Point to Google RSS instead of Yahoo
-            // We strip the .NS to make the search broader for Google News
             string cleanSymbol = symbol.Replace(".NS", "").Replace(".BO", "");
             string query = Uri.EscapeDataString($"{cleanSymbol} stock news India");
             string url = $"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en";
 
-            // GetStreamAsync is better for XML/RSS
+            // GetStreamAsync good for XML/RSS
             var response = await _httpClient.GetStreamAsync(url);
 
             using var xmlReader = XmlReader.Create(response);
@@ -62,13 +60,13 @@ public class NewsService
                         Description: item.Summary?.Text ?? cleanTitle,
                         Url: item.Links.FirstOrDefault()?.Uri.ToString() ?? "#",
                         Source: source,
-                        ImageUrl: "", // Google RSS doesn't provide easy thumbnails
+                        ImageUrl: "",
                         PublishedAt: item.PublishDate.DateTime
                     )
                 );
             }
 
-            // 3. Store in cache for 30 mins to avoid hitting Google too hard
+            // Store in cache for 30 mins to avoid hitting Google too hard
             _cache.Set(cacheKey, articles, TimeSpan.FromMinutes(30));
         }
         catch (Exception ex)

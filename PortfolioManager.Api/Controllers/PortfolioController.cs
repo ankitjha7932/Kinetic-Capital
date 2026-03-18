@@ -32,9 +32,8 @@ public class PortfolioController : ControllerBase
         _marketService = marketService;
     }
 
-    // 1. GET: api/portfolio/summary/{userId}
     [HttpGet("summary/{userId}")]
-    public async Task<IActionResult> GetSummary(string userId) // FIX: Changed from int to string
+    public async Task<IActionResult> GetSummary(string userId) 
     {
         try
         {
@@ -46,23 +45,20 @@ public class PortfolioController : ControllerBase
             {
                 decimal livePrice = await _priceService.GetLivePriceAsync(h.Symbol);
 
-                // Fallback logic
                 if (livePrice <= 0)
                     livePrice = h.AvgBuyPrice;
 
-                // 1. Fetch from StockFundamental collection
+                // Fetch from StockFundamental collection
                 var fundamental = await _db.Stocks.FirstOrDefaultAsync(s => s.Symbol == h.Symbol);
 
                 double mCapValue = 0;
                 if (fundamental != null && !string.IsNullOrEmpty(fundamental.MarketCap))
                 {
-                    // 2. Clean string just in case there are commas or "Cr" hiden in other docs
                     string cleanValue = fundamental
                         .MarketCap.Replace("Cr", "", StringComparison.OrdinalIgnoreCase)
                         .Replace(",", "")
                         .Trim();
 
-                    // 3. Parse using InvariantCulture (essential for financial decimals)
                     double.TryParse(
                         cleanValue,
                         System.Globalization.NumberStyles.Any,
@@ -75,7 +71,7 @@ public class PortfolioController : ControllerBase
 
                 holdingResponses.Add(
                     new HoldingResponse(
-                        h.Id, // Ensure HoldingResponse 'Id' is also a string
+                        h.Id, 
                         h.Symbol,
                         h.Quantity,
                         h.AvgBuyPrice,
@@ -100,7 +96,7 @@ public class PortfolioController : ControllerBase
             return Ok(
                 new PortfolioSummaryResponse
                 {
-                    UserId = userId, // Ensure PortfolioSummaryResponse 'UserId' is a string
+                    UserId = userId, 
                     TotalHoldings = holdingResponses.Count,
                     TotalInvested = totalInvested,
                     CurrentValue = currentValue,
@@ -128,7 +124,7 @@ public class PortfolioController : ControllerBase
         return "MICRO-CAP";
     }
 
-    // 2. GET: api/portfolio/analysis?userId={id}
+    // api/portfolio/analysis?userId={id}
     [HttpGet("analysis")]
     public async Task<IActionResult> AnalyzeCurrentUser([FromQuery] string userId)
     {
@@ -180,7 +176,7 @@ public class PortfolioController : ControllerBase
         return Ok(result);
     }
 
-    // 3. GET: api/portfolio/suggestions?userId={id}
+    // api/portfolio/suggestions?userId={id}
     [HttpGet("suggestions")]
     public async Task<IActionResult> GetSuggestions([FromQuery] string userId)
     {
@@ -188,19 +184,17 @@ public class PortfolioController : ControllerBase
         if (user == null)
             return NotFound("User not found.");
 
-        // FIXED: Null-safe sector parsing to remove build warnings
         var sectorString = user.PreferredSectors ?? "";
         var sectors = sectorString.Split(
             ',',
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
         );
 
-        // FIXED: Null-safe risk profile
         var result = _health.SuggestStocks(user.RiskProfile ?? "Moderate", sectors);
         return Ok(result);
     }
 
-    // 4. GET: api/portfolio/price/{symbol}
+    // api/portfolio/price/{symbol}
     [HttpGet("price/{symbol}")]
     public async Task<IActionResult> GetSinglePrice(string symbol)
     {
@@ -211,8 +205,6 @@ public class PortfolioController : ControllerBase
         return Ok(new { Symbol = symbol, Price = price });
     }
 
-    // 5. FIXED: api/portfolio/news/{symbol}
-    // This was the 404 fix you needed!
     [HttpGet("news/{symbol}")]
     public async Task<IActionResult> GetNews(string symbol)
     {

@@ -10,15 +10,12 @@ using MongoDB.Driver;
 using PortfolioManager.Api.Models;
 using PortfolioManager.Api.Services;
 
-// 1. Load .env file immediately
 DotEnv.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
-// 2. Database Configuration (Secured)
-// Prioritize .env variables over appsettings.json
 var mongoUri =
     Environment.GetEnvironmentVariable("DATABASE_URL") ?? builder.Configuration["DATABASE_URL"];
 
@@ -37,7 +34,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMongoDB(mongoClient, databaseName)
 );
 
-// 3. CORS Configuration
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(
@@ -53,7 +49,6 @@ builder.Services.AddCors(options =>
     );
 });
 
-// 4. Application Services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddMemoryCache();
@@ -63,13 +58,11 @@ builder.Services.AddScoped<StockDetailsService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<StockPriceService>();
 builder.Services.AddScoped<NewsService>();
-// Register the Analysis Service
 builder.Services.AddScoped<IStockAnalysisService, StockAnalysisService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<MarketService>();
 builder.Services.AddControllers();
 
-// Typed HttpClients
 builder
     .Services.AddHttpClient<StockPriceService>()
     .ConfigurePrimaryHttpMessageHandler(() =>
@@ -92,7 +85,6 @@ builder
         }
     );
 
-// 5. Swagger Configuration
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "PortfolioManager", Version = "v1" });
@@ -125,7 +117,6 @@ builder.Services.AddSwaggerGen(c =>
     );
 });
 
-// 6. Authentication Configuration (Secured)
 var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? builder.Configuration["Jwt:Key"];
 
 if (string.IsNullOrEmpty(jwtKey))
@@ -152,11 +143,9 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// 7. Middleware Pipeline
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// Render Dynamic Port Binding
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 if (!app.Environment.IsDevelopment())
 {
