@@ -72,6 +72,8 @@ public class StockPriceService
         string interval = "1d"
     )
     {
+        TimeZoneInfo istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+
         try
         {
             string ticker = symbol.ToUpper().EndsWith(".NS")
@@ -102,9 +104,16 @@ public class StockPriceService
             {
                 if (closes[i].ValueKind == JsonValueKind.Number)
                 {
+                    var utcDate = DateTimeOffset
+                        .FromUnixTimeSeconds(timestamps[i].GetInt64())
+                        .UtcDateTime;
+
+                    // Convert to India Standard Time
+                    var istDate = TimeZoneInfo.ConvertTimeFromUtc(utcDate, istZone);
+
                     prices.Add(
                         new PricePoint(
-                            DateTimeOffset.FromUnixTimeSeconds(timestamps[i].GetInt64()).DateTime,
+                            istDate, // Now sending IST to frontend
                             closes[i].GetDecimal(),
                             volumes[i].ValueKind == JsonValueKind.Number ? volumes[i].GetInt64() : 0
                         )

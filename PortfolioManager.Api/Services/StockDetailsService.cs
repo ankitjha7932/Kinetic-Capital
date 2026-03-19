@@ -24,13 +24,15 @@ public class StockDetailsService
         string ticker = symbol.ToUpper();
         string dbSymbol = ticker.EndsWith(".NS") ? ticker : $"{ticker}.NS";
 
-        var (fetchRange, interval, cutoffMonths) = range.ToLower() switch
+        var (fetchRange, interval, cutoffTime) = range.ToLower() switch
         {
-            "1m" => ("3y", "1d", 1),
-            "3m" => ("3y", "1d", 3),
-            "6m" => ("3y", "1d", 6),
-            "1y" => ("3y", "1d", 12),
-            _ => ("3y", "1d", 12),
+            "1d" => ("5d", "5m", DateTime.UtcNow.AddDays(-1)), 
+            "1w" => ("1mo", "15m", DateTime.UtcNow.AddDays(-7)),
+            "1m" => ("2y", "1d", DateTime.UtcNow.AddMonths(-1)),
+            "3m" => ("2y", "1d", DateTime.UtcNow.AddMonths(-3)),
+            "6m" => ("2y", "1d", DateTime.UtcNow.AddMonths(-6)),
+            "1y" => ("3y", "1d", DateTime.UtcNow.AddYears(-1)),
+            _ => ("5y", "1d", DateTime.UtcNow.AddYears(-1)),
         };
 
         var historyTask = _priceService.GetHistoricalDataAsync(dbSymbol, fetchRange, interval);
@@ -48,7 +50,28 @@ public class StockDetailsService
         var allPrices = history.Prices.Select(p => (decimal)p.Close).ToList();
         decimal currentPrice = allPrices.Last();
         decimal prevPrice = allPrices.Count > 1 ? allPrices[^2] : currentPrice;
-        DateTime cutoffDate = DateTime.UtcNow.AddMonths(-cutoffMonths);
+
+        var fullChartPoints = history
+            .Prices.Select(
+                (p, i) =>
+                    new ChartDataPoint
+                    {
+                        Date = p.Date,
+                        Price = Math.Round((decimal)p.Close, 2),
+                        Volume = p.Volume,
+                        DmA50 =
+                            i < 49
+                                ? null
+                                : (decimal?)
+                                    Math.Round(allPrices.Skip(i - 49).Take(50).Average(), 2),
+                        DmA200 =
+                            i < 199
+                                ? null
+                                : (decimal?)
+                                    Math.Round(allPrices.Skip(i - 199).Take(200).Average(), 2),
+                    }
+            )
+            .ToList();
 
         return new StockDetails
         {
@@ -56,7 +79,6 @@ public class StockDetailsService
             Industry = fundamentals?.Industry ?? "N/A",
             LastUpdate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
 
-            // Map Ratios
             Ratios = new FundamentalRatios
             {
                 CurrentPrice = Math.Round(currentPrice, 2),
@@ -89,36 +111,13 @@ public class StockDetailsService
                 HistoricalLow = Math.Round(allPrices.Min(), 2),
             },
 
-            // Map Financial Tables
             QuarterlyResults = fundamentals?.QuarterlyResults ?? new(),
             ProfitAndLoss = fundamentals?.ProfitAndLoss ?? new(),
             BalanceSheet = fundamentals?.BalanceSheet ?? new(),
             CashFlow = fundamentals?.CashFlow ?? new(),
             Peers = fundamentals?.Peers ?? new(),
 
-            // Map Chart Data with DMAs
-            ChartData = history
-                .Prices.Select(
-                    (p, i) =>
-                        new ChartDataPoint
-                        {
-                            Date = p.Date,
-                            Price = Math.Round((decimal)p.Close, 2),
-                            Volume = p.Volume,
-                            DmA50 =
-                                i < 49
-                                    ? null
-                                    : (decimal?)
-                                        Math.Round(allPrices.Skip(i - 49).Take(50).Average(), 2),
-                            DmA200 =
-                                i < 199
-                                    ? null
-                                    : (decimal?)
-                                        Math.Round(allPrices.Skip(i - 199).Take(200).Average(), 2),
-                        }
-                )
-                .Where(d => d.Date >= cutoffDate)
-                .ToList(),
+            ChartData = fullChartPoints.Where(d => d.Date >= cutoffTime).ToList(),
         };
     }
 }
