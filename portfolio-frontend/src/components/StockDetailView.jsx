@@ -68,6 +68,7 @@ export default function StockDetailView() {
     fetchAnalysis();
   }, [symbol]);
 
+  // Effect: Fetch News
   useEffect(() => {
     if (!symbol || symbol === "undefined") return;
     const fetchNews = async () => {
@@ -84,6 +85,7 @@ export default function StockDetailView() {
     fetchNews();
   }, [symbol]);
 
+  // Effect: Fetch Stock Details
   useEffect(() => {
     if (!symbol || symbol === "undefined") return;
     const fetchDetails = async () => {
@@ -121,8 +123,27 @@ export default function StockDetailView() {
     return "bg-amber-50 text-amber-700 border-amber-100";
   };
 
+  // --- X-AXIS IST DATE FORMATTING ---
   const renderDateTick = (tickItem) => {
     const date = new Date(tickItem);
+    if (range === "1d") {
+      return date.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    }
+    if (range === "1w") {
+      return (
+        date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) +
+        " " +
+        date.toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })
+      );
+    }
     const options =
       range === "1m" || range === "3m"
         ? { day: "2-digit", month: "short" }
@@ -189,7 +210,7 @@ export default function StockDetailView() {
         </div>
       </div>
 
-      {/* ANALYSIS SLIDE-OVER PANEL */}
+      {/* ANALYSIS SIDE-OVER PANEL */}
       {showAnalysisPanel && (
         <div className="fixed inset-0 z-[100] flex justify-end">
           <div
@@ -198,14 +219,9 @@ export default function StockDetailView() {
           />
           <div className="relative w-full max-w-md bg-white/95 h-full shadow-2xl p-8 flex flex-col border-l border-white/20">
             <div className="flex justify-between items-center mb-10">
-              <div>
-                <h3 className="text-2xl font-black text-slate-900 tracking-tight">
-                  Kinetic Analysis
-                </h3>
-                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mt-1">
-                  Institutional Logic
-                </p>
-              </div>
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                Kinetic Analysis
+              </h3>
               <button
                 onClick={() => setShowAnalysisPanel(false)}
                 className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"
@@ -213,7 +229,6 @@ export default function StockDetailView() {
                 <X size={24} />
               </button>
             </div>
-
             <div className="space-y-8 overflow-y-auto pr-2">
               <div className="p-8 rounded-[2.5rem] bg-gradient-to-br from-slate-900 to-indigo-950 text-white shadow-xl">
                 <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-1">
@@ -234,7 +249,6 @@ export default function StockDetailView() {
                   </div>
                 </div>
               </div>
-
               <div className="space-y-4">
                 <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
                   Key Evidence
@@ -253,43 +267,12 @@ export default function StockDetailView() {
                   </div>
                 ))}
               </div>
-
-              {/* PERFORMANCE MATRIX GRID */}
-              <div className="grid grid-cols-2 gap-3">
-                {Object.entries(analysis?.performanceMatrix || {}).map(
-                  ([key, val]) => {
-                    // Clean the value: Ensure it's treated as a string and handle any "Data Error" messages
-                    const displayVal = String(val);
-                    const isNegative = displayVal.includes("-");
-
-                    return (
-                      <div
-                        key={key}
-                        className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center hover:bg-white transition-colors"
-                      >
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                          {key}
-                        </p>
-                        <p
-                          className={`text-sm font-black tracking-tight ${
-                            isNegative ? "text-rose-500" : "text-emerald-500"
-                          }`}
-                        >
-                          {displayVal}
-                        </p>
-                      </div>
-                    );
-                  },
-                )}
-              </div>
             </div>
-            <p className="mt-auto text-[10px] text-slate-400 font-medium text-center italic border-t border-slate-50 pt-6">
-              Insights based on technical history. Not financial advice.
-            </p>
           </div>
         </div>
       )}
 
+      {/* RATIOS & NEWS SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white rounded-3xl p-8 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12 content-start">
           <RatioItem label="Market Cap" value={data?.ratios?.marketCap} />
@@ -303,24 +286,18 @@ export default function StockDetailView() {
           />
           <RatioItem label="Stock P/E" value={data?.ratios?.stockPE} />
           <RatioItem
-            label="Book Value"
-            value={
-              data?.ratios?.bookValue === "N/A"
-                ? "N/A"
-                : `₹ ${data?.ratios?.bookValue}`
-            }
-          />
-          <RatioItem
             label="Dividend Yield"
             value={data?.ratios?.dividendYield}
           />
-          <RatioItem label="ROCE" value={data?.ratios?.roce} />
-          <RatioItem label="ROE" value={data?.ratios?.roe} />
-          <RatioItem label="Face Value" value={data?.ratios?.faceValue} />
+          <RatioItem
+            label="ROCE / ROE"
+            value={`${data?.ratios?.roce} / ${data?.ratios?.roe}`}
+          />
           <RatioItem
             label="Historical High"
             value={`₹ ${formatNum(data?.ratios?.historicalHigh)}`}
           />
+          <RatioItem label="Face Value" value={data?.ratios?.faceValue} />
         </div>
 
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
@@ -329,13 +306,7 @@ export default function StockDetailView() {
             <h3 className="font-bold text-slate-800 text-sm">Latest News</h3>
           </div>
           <div className="overflow-y-auto max-h-[400px] divide-y divide-slate-50">
-            {newsLoading ? (
-              <div className="p-6 space-y-4 animate-pulse">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-16 bg-slate-50 rounded-xl" />
-                ))}
-              </div>
-            ) : (
+            {!newsLoading &&
               news.map((item, idx) => (
                 <a
                   key={idx}
@@ -346,17 +317,9 @@ export default function StockDetailView() {
                 >
                   <div className="flex justify-between items-start gap-3">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-black text-indigo-600 uppercase">
-                          {item.source}
-                        </span>
-                        <span className="text-[9px] text-slate-400 font-bold uppercase">
-                          {new Date(item.publishedAt).toLocaleDateString(
-                            undefined,
-                            { month: "short", day: "numeric" },
-                          )}
-                        </span>
-                      </div>
+                      <span className="text-[9px] font-black text-indigo-600 uppercase">
+                        {item.source}
+                      </span>
                       <h4 className="text-[12px] font-bold text-slate-700 leading-snug group-hover:text-indigo-600 transition-colors line-clamp-2">
                         {item.title}
                       </h4>
@@ -367,16 +330,16 @@ export default function StockDetailView() {
                     />
                   </div>
                 </a>
-              ))
-            )}
+              ))}
           </div>
         </div>
       </div>
 
+      {/* CHART SECTION */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-8">
           <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
-            {["1m", "3m", "6m", "1y", "3y", "max"].map((f) => (
+            {["1d", "1w", "1m", "3m", "6m", "1y", "max"].map((f) => (
               <button
                 key={f}
                 onClick={() => setRange(f)}
@@ -408,7 +371,10 @@ export default function StockDetailView() {
           </div>
         </div>
 
-        <div className="h-[280px] w-full">
+        <div
+          className="h-[300px] w-full min-w-0"
+          style={{ position: "relative" }}
+        >
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={data?.chartData}
@@ -436,27 +402,11 @@ export default function StockDetailView() {
               <YAxis
                 yAxisId="vol"
                 orientation="left"
-                domain={[0, (dataMax) => dataMax * 1.1]}
-                tick={{ fontSize: 9, fill: "#94a3b8", fontWeight: 600 }}
+                domain={[0, (dataMax) => dataMax * 1.5]}
+                tick={false}
                 axisLine={false}
                 tickLine={false}
-                tickFormatter={(val) =>
-                  val >= 1000000 ? `${(val / 1000000).toFixed(1)}M` : val
-                }
-              >
-                <Label
-                  value="Volume"
-                  angle={-90}
-                  position="insideLeft"
-                  style={{
-                    textAnchor: "middle",
-                    fill: "#94a3b8",
-                    fontSize: 10,
-                    fontWeight: 700,
-                  }}
-                  offset={5}
-                />
-              </YAxis>
+              />
               <YAxis
                 yAxisId="price"
                 orientation="right"
@@ -465,28 +415,22 @@ export default function StockDetailView() {
                 tick={{ fontSize: 10, fill: "#64748b", fontWeight: 700 }}
                 axisLine={false}
                 tickLine={false}
-              >
-                <Label
-                  value="Price (₹)"
-                  angle={90}
-                  position="right"
-                  style={{
-                    textAnchor: "middle",
-                    fill: "#64748b",
-                    fontSize: 11,
-                    fontWeight: 700,
-                  }}
-                  offset={30}
-                />
-              </YAxis>
+              />
+
               <Tooltip
-                content={<CustomTooltip />}
+                content={
+                  <CustomTooltip
+                    range={range}
+                    toggles={{ showDMA50, showDMA200 }}
+                  />
+                }
                 cursor={{
                   stroke: "#94a3b8",
                   strokeWidth: 1,
                   strokeDasharray: "5 5",
                 }}
               />
+
               <Area
                 yAxisId="price"
                 type="monotone"
@@ -499,9 +443,9 @@ export default function StockDetailView() {
                 <Bar
                   yAxisId="vol"
                   dataKey="volume"
-                  fill="#475569"
-                  opacity={0.3}
-                  barSize={range === "1m" ? 25 : 8}
+                  fill="#cbd5e1"
+                  opacity={0.4}
+                  barSize={range === "1d" ? 15 : 6}
                 />
               )}
               {showPrice && (
@@ -542,18 +486,8 @@ export default function StockDetailView() {
         </div>
       </div>
 
+      {/* FINANCIAL ANALYSIS TABLES */}
       <div className="space-y-6">
-        <div className="flex items-end justify-between px-2">
-          <div>
-            <h2 className="text-2xl font-black text-slate-800 tracking-tight">
-              Financial Analysis
-            </h2>
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">
-              Detailed Statements in Cr.
-            </p>
-          </div>
-        </div>
-
         <div className="flex flex-wrap bg-white p-2 rounded-2xl shadow-sm border border-slate-100 gap-2 w-fit">
           {[
             { id: "quarters", label: "Quarterly Results" },
@@ -564,31 +498,12 @@ export default function StockDetailView() {
             <button
               key={tab.id}
               onClick={() => toggleTable(tab.id)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${
-                visibleTables[tab.id]
-                  ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200"
-                  : "bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 border border-transparent hover:border-slate-200"
-              }`}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 border border-transparent hover:border-slate-200"}`}
             >
-              {visibleTables[tab.id] ? <Eye size={14} /> : <EyeOff size={14} />}
+              {visibleTables[tab.id] ? <Eye size={14} /> : <EyeOff size={14} />}{" "}
               {tab.label}
             </button>
           ))}
-          {/* SMART INSIGHT GUIDE (Retail-Friendly) */}
-          <div className="hidden lg:flex items-center gap-3 ml-4 pl-4 border-l border-slate-100 py-1">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 shadow-inner">
-              <Zap size={16} fill="currentColor" className="animate-pulse" />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest leading-none mb-1">
-                Smart Insight
-              </p>
-              <p className="text-[10px] font-bold text-slate-400 leading-tight">
-                Skip the scan. We've highlighted the major <br />
-                quarterly moves in the badges below.
-              </p>
-            </div>
-          </div>
         </div>
 
         <div className="space-y-12">
@@ -616,18 +531,16 @@ export default function StockDetailView() {
   );
 }
 
-const RatioItem = ({ label, value }) => {
-  const displayValue =
-    typeof value === "number" ? value.toLocaleString("en-IN") : value || "N/A";
-  return (
-    <div className="flex justify-between items-center border-b border-slate-50 pb-2">
-      <span className="text-slate-400 text-sm font-medium">{label}</span>
-      <span className="text-slate-900 font-bold text-sm tracking-tight">
-        {displayValue}
-      </span>
-    </div>
-  );
-};
+const RatioItem = ({ label, value }) => (
+  <div className="flex justify-between items-center border-b border-slate-50 pb-2">
+    <span className="text-slate-400 text-sm font-medium">{label}</span>
+    <span className="text-slate-900 font-bold text-sm tracking-tight">
+      {typeof value === "number"
+        ? value.toLocaleString("en-IN")
+        : value || "N/A"}
+    </span>
+  </div>
+);
 
 const ToggleButton = ({ label, active, onClick, color }) => (
   <button
@@ -639,43 +552,76 @@ const ToggleButton = ({ label, active, onClick, color }) => (
   </button>
 );
 
-const CustomTooltip = ({ active, payload }) => {
+// --- RECTANGULAR STRIP COMPONENT ---
+const CustomTooltip = ({ active, payload, range, toggles = {} }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
+    const dateObj = new Date(data.date);
+
+    let label = "";
+    if (range === "1d")
+      label = dateObj.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    else if (range === "1w")
+      label = dateObj
+        .toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+        .replace(",", " |");
+    else
+      label = dateObj.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+
     return (
-      <div className="bg-slate-900/95 text-white p-2 rounded-xl text-[10px] shadow-xl border border-slate-800 min-w-[110px] backdrop-blur-sm">
-        <p className="font-bold text-slate-400 border-b border-slate-800 pb-0.5 mb-1 text-center">
-          {data.date}
+      <div className="bg-slate-900/95 text-white p-3 rounded-2xl text-[11px] shadow-2xl border border-slate-800 min-w-[150px] backdrop-blur-md animate-in fade-in zoom-in duration-200">
+        <p className="font-black text-indigo-300 border-b border-slate-800 pb-1.5 mb-2 text-center tracking-tight uppercase">
+          {label}
         </p>
-        <div className="space-y-0.5">
-          <div className="flex justify-between gap-3">
-            <span className="text-slate-400">Price:</span>
-            <span className="font-bold text-indigo-300">
+        <div className="space-y-1.5">
+          {/* ALWAYS SHOWN: PRICE */}
+          <div className="flex justify-between gap-4">
+            <span className="text-slate-400 font-bold">Price:</span>
+            <span className="font-black text-white">
               ₹{Number(data.price || 0).toFixed(2)}
             </span>
           </div>
-          {data.dmA50 && (
-            <div className="flex justify-between gap-3">
-              <span className="text-amber-400">50 DMA:</span>
-              <span className="font-medium">
+
+          {/* CONDITIONAL: 50 DMA */}
+          {toggles?.showDMA50 && data.dmA50 && (
+            <div className="flex justify-between gap-4 border-t border-slate-800/50 pt-1">
+              <span className="text-amber-500 font-bold">50 DMA:</span>
+              <span className="font-bold text-amber-200">
                 ₹{Number(data.dmA50).toFixed(2)}
               </span>
             </div>
           )}
-          {data.dmA200 && (
-            <div className="flex justify-between gap-3">
-              <span className="text-slate-400">200 DMA:</span>
-              <span className="font-medium">
+
+          {/* CONDITIONAL: 200 DMA */}
+          {toggles?.showDMA200 && data.dmA200 && (
+            <div className="flex justify-between gap-4 border-t border-slate-800/50 pt-1">
+              <span className="text-slate-400 font-bold">200 DMA:</span>
+              <span className="font-bold text-slate-300">
                 ₹{Number(data.dmA200).toFixed(2)}
               </span>
             </div>
           )}
-          <div className="flex justify-between gap-3 pt-0.5 border-t border-slate-800">
-            <span className="text-slate-400">Vol:</span>
-            <span className="text-slate-300 font-medium">
+
+          {/* ALWAYS SHOWN: VOLUME */}
+          <div className="flex justify-between gap-4 pt-1 border-t border-slate-800">
+            <span className="text-slate-500 font-bold">Vol:</span>
+            <span className="text-slate-300 font-bold">
               {data.volume >= 1000000
-                ? `${(data.volume / 1000000).toFixed(1)}M`
-                : (data.volume || 0).toLocaleString()}
+                ? `${(data.volume / 1000000).toFixed(2)}M`
+                : (data.volume || 0).toLocaleString("en-IN")}
             </span>
           </div>
         </div>
