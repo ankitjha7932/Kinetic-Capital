@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom'; 
+import { useNavigate, Link } from 'react-router-dom'; 
 import api from '../api/axios';
 import { Mail, Lock, Shield, ArrowRight, UserPlus, LogIn } from 'lucide-react';
 
@@ -115,6 +115,18 @@ export default function Auth({ onLoginSuccess }) {
             required
           />
         </div>
+
+        {/* --- ADDED FORGOT PASSWORD LINK --- */}
+        {isLogin && (
+          <div className="flex justify-end px-1">
+            <Link 
+              to="/forgot-password" 
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+            >
+              Forgot Password?
+            </Link>
+          </div>
+        )}
 
         {!isLogin && (
           <div className="grid grid-cols-2 gap-4 animate-in slide-in-from-top-4 duration-500">
