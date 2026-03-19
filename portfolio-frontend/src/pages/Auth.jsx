@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom'; 
 import api from '../api/axios';
-import { Mail, Lock, Shield, ArrowRight, UserPlus, LogIn } from 'lucide-react';
+import { Mail, Lock, Shield, ArrowRight, UserPlus, LogIn, Eye, EyeOff } from 'lucide-react';
 
 export default function Auth({ onLoginSuccess }) {
   const navigate = useNavigate(); 
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState('input');
+  const [showPassword, setShowPassword] = useState(false); 
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -28,6 +29,7 @@ export default function Auth({ onLoginSuccess }) {
 
   const handleInitialSubmit = async (e) => {
     if (e) e.preventDefault();
+    setIsLogin(true);
     setIsLoading(true);
     try {
       if (isLogin) {
@@ -107,22 +109,25 @@ export default function Auth({ onLoginSuccess }) {
         <div className="relative">
           <Lock className="absolute left-4 top-4 text-slate-400" size={20} />
           <input 
-            type="password" 
+            type={showPassword ? "text" : "password"} // Dynamic type
             placeholder="Password" 
-            className="w-full p-4 pl-12 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
+            className="w-full p-4 pl-12 pr-12 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
             value={formData.password}
             onChange={(e) => setFormData({...formData, password: e.target.value})}
             required
           />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-4 top-4 text-slate-400 hover:text-indigo-600 transition-colors"
+          >
+            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+          </button>
         </div>
 
-        {/* --- ADDED FORGOT PASSWORD LINK --- */}
         {isLogin && (
           <div className="flex justify-end px-1">
-            <Link 
-              to="/forgot-password" 
-              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
-            >
+            <Link to="/forgot-password" size={20} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
               Forgot Password?
             </Link>
           </div>
@@ -165,7 +170,7 @@ export default function Auth({ onLoginSuccess }) {
 
       <div className="mt-8 text-center border-t pt-6">
         <button 
-          onClick={() => { setIsLogin(!isLogin); setStep('input'); }}
+          onClick={() => { setIsLogin(!isLogin); setStep('input'); setShowPassword(false); }}
           className="text-indigo-600 font-bold flex items-center justify-center gap-2 mx-auto hover:text-indigo-800 transition-colors"
         >
           {isLogin ? <UserPlus size={18} /> : <LogIn size={18} />}
