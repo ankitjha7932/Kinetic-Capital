@@ -11,6 +11,9 @@ using PortfolioManager.Api.Models;
 using PortfolioManager.Api.Services;
 
 DotEnv.Load();
+Console.WriteLine(
+    $"DEBUG: BREVO KEY LOADED: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("BREVO_API_KEY"))}"
+);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,7 +24,7 @@ var mongoUri =
 
 if (string.IsNullOrEmpty(mongoUri))
 {
-    mongoUri = "mongodb://localhost:27017"; 
+    mongoUri = "mongodb://localhost:27017";
 }
 
 var mongoClient = new MongoClient(mongoUri);
@@ -62,6 +65,7 @@ builder.Services.AddScoped<IStockAnalysisService, StockAnalysisService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<MarketService>();
 builder.Services.AddControllers();
+builder.Services.AddScoped<AuthService>();
 
 builder
     .Services.AddHttpClient<StockPriceService>()

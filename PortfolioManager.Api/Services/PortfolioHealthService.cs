@@ -91,7 +91,7 @@ public class PortfolioHealthService
             .ToList();
 
         var maxWeight = weights.Max(w => w.Weight);
-        var highlyConcentrated = maxWeight > 25m; // arbitrary
+        var highlyConcentrated = maxWeight > 25m; 
 
         // Simple scoring: based on totalPnlPct and concentration
         int score = 50; // start neutral
@@ -108,7 +108,6 @@ public class PortfolioHealthService
         if (highlyConcentrated)
             score -= 15;
 
-        // Clamp score
         score = Math.Max(0, Math.Min(100, score));
 
         string band =
@@ -146,7 +145,6 @@ public class PortfolioHealthService
     {
         var list = new List<RecommendedStock>();
 
-        // for now just hardcode it – replace later with API-based screener
         if (preferredSectors.Contains("IT", StringComparer.OrdinalIgnoreCase))
         {
             list.Add(
