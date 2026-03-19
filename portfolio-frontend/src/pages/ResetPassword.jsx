@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import api from '../api/axios';
-import { Lock, CheckCircle2, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Lock, CheckCircle2, ArrowRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   
   const [passwords, setPasswords] = useState({ new: '', confirm: '' });
+  const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState({ msg: '', loading: false, success: false });
 
   const handleReset = async (e) => {
@@ -45,7 +46,6 @@ export default function ResetPassword() {
         </div>
 
         {status.success ? (
-          /* --- SUCCESS STATE --- */
           <div className="text-center py-6 animate-in slide-in-from-bottom-4 duration-500">
             <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6">
               <ShieldCheck size={40} />
@@ -62,25 +62,31 @@ export default function ResetPassword() {
             </Link>
           </div>
         ) : (
-          /* --- INPUT STATE --- */
           <form onSubmit={handleReset} className="space-y-5">
             <div className="relative">
               <Lock className="absolute left-4 top-4.5 text-slate-400" size={20} />
               <input 
-                type="password" 
+                type={showPassword ? "text" : "password"}
                 placeholder="New Password" 
-                className="w-full p-4 pl-12 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
+                className="w-full p-4 pl-12 pr-12 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
                 onChange={(e) => setPasswords({...passwords, new: e.target.value})}
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-4.5 text-slate-400 hover:text-indigo-600 transition-colors"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
             </div>
 
             <div className="relative">
               <Lock className="absolute left-4 top-4.5 text-slate-400" size={20} />
               <input 
-                type="password" 
+                type={showPassword ? "text" : "password"}
                 placeholder="Confirm Password" 
-                className="w-full p-4 pl-12 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
+                className="w-full p-4 pl-12 pr-12 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
                 onChange={(e) => setPasswords({...passwords, confirm: e.target.value})}
                 required
               />
