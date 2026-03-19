@@ -37,6 +37,15 @@ namespace PortfolioManager.Api.Models
 
         [BsonElement("fullName")]
         public string? FullName { get; set; }
+
+        [BsonElement("resetToken")]
+        public string? ResetToken { get; set; }
+
+        [BsonElement("resetTokenExpiry")]
+        public DateTime? ResetTokenExpiry { get; set; }
+
+        [BsonElement("lastResetRequest")]
+        public DateTime? LastResetRequest { get; set; }
     }
 
     public class Otp
@@ -51,4 +60,7 @@ namespace PortfolioManager.Api.Models
         public int Attempts { get; set; } = 0;
         public bool IsVerified { get; set; } = false;
     }
+
+    public record ForgotPasswordRequest(string Email);
+    public record ResetPasswordRequest(string Token, string NewPassword);
 }
