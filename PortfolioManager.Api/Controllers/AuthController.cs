@@ -19,7 +19,7 @@ public class AuthController : ControllerBase
         return res.Success ? Ok(new { message = res.Message }) : BadRequest(res.Message);
     }
 
-    [HttpPost("verify-otp")]
+    [HttpPost("verify-otp-register")]
     public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpRequest req)
     {
         var res = await _auth.VerifyOtpAsync(req.Email, req.Otp);
