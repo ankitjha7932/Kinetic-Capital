@@ -20,11 +20,7 @@ import {
   ArrowUpRight,
   Eye,
   EyeOff,
-  Info,
   Zap,
-  Activity,
-  BarChart3,
-  X,
 } from "lucide-react";
 import api from "../api/axios";
 import FinancialTable from "./FinancialTable";
@@ -35,7 +31,6 @@ export default function StockDetailView() {
 
   const [data, setData] = useState(null);
   const [analysis, setAnalysis] = useState(null);
-  const [showAnalysisPanel, setShowAnalysisPanel] = useState(false);
   const [news, setNews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newsLoading, setNewsLoading] = useState(true);
@@ -48,54 +43,31 @@ export default function StockDetailView() {
     cash: false,
   });
 
-  const [showPrice, setShowPrice] = useState(true);
   const [showDMA50, setShowDMA50] = useState(false);
   const [showDMA200, setShowDMA200] = useState(false);
   const [showVolumeAlways, setShowVolumeAlways] = useState(true);
 
   useEffect(() => {
     if (!symbol || symbol === "undefined") return;
-    const fetchAnalysis = async () => {
+    const fetchData = async () => {
       try {
-        const res = await api.get(`/stocks/analyze/${symbol}`);
-        setAnalysis(res.data);
+        setLoading(true);
+        const [analRes, newsRes, detRes] = await Promise.all([
+          api.get(`/stocks/analyze/${symbol}`),
+          api.get(`/portfolio/news/${symbol}`),
+          api.get(`/stocks/details/${symbol}?range=${range}`),
+        ]);
+        setAnalysis(analRes.data);
+        setNews(newsRes.data.slice(0, 7));
+        setData(detRes.data);
       } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchAnalysis();
-  }, [symbol]);
-
-  useEffect(() => {
-    if (!symbol || symbol === "undefined") return;
-    const fetchNews = async () => {
-      setNewsLoading(true);
-      try {
-        const res = await api.get(`/portfolio/news/${symbol}`);
-        setNews(res.data.slice(0, 7));
-      } catch (err) {
-        console.error(err);
+        console.error("Fetch error:", err);
       } finally {
+        setLoading(false);
         setNewsLoading(false);
       }
     };
-    fetchNews();
-  }, [symbol]);
-
-  useEffect(() => {
-    if (!symbol || symbol === "undefined") return;
-    const fetchDetails = async () => {
-      setLoading(true);
-      try {
-        const res = await api.get(`/stocks/details/${symbol}?range=${range}`);
-        setData(res.data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDetails();
+    fetchData();
   }, [symbol, range]);
 
   const toggleTable = (id) =>
@@ -109,17 +81,16 @@ export default function StockDetailView() {
     });
   };
 
+  // 2. HELPER: Proper markings for Volume Y-Axis (Left)
+  const formatVolumeLabel = (val) => {
+    if (val >= 10000000) return `${(val / 10000000).toFixed(1)}Cr`;
+    if (val >= 1000000) return `${(val / 1000000).toFixed(1)}M`;
+    if (val >= 1000) return `${(val / 1000).toFixed(0)}K`;
+    return val;
+  };
+
   const isUp = data?.ratios?.priceChange >= 0;
   const themeColor = isUp ? "#10b981" : "#f43f5e";
-
-  const getSentTheme = (sent) => {
-    if (!sent) return "bg-slate-50 text-slate-400 border-slate-100";
-    if (sent.includes("Strong") || sent.includes("Positive"))
-      return "bg-emerald-50 text-emerald-700 border-emerald-100";
-    if (sent.includes("Pressure") || sent.includes("Correction"))
-      return "bg-rose-50 text-rose-700 border-rose-100";
-    return "bg-amber-50 text-amber-700 border-amber-100";
-  };
 
   const renderDateTick = (tickItem) => {
     const date = new Date(tickItem);
@@ -129,32 +100,26 @@ export default function StockDetailView() {
         minute: "2-digit",
         hour12: true,
       });
-    if (range === "1w")
-      return (
-        date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) +
-        " " +
-        date.toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        })
-      );
-    const options =
-      range === "1m" || range === "3m"
-        ? { day: "2-digit", month: "short" }
-        : { month: "short", year: "2-digit" };
-    return date.toLocaleDateString("en-IN", options);
+    if (range === "1w" || range === "1m")
+      return date.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+      });
+    return date.toLocaleDateString("en-IN", {
+      month: "short",
+      year: "2-digit",
+    });
   };
 
   if (loading && !data)
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
-        <Loader2 className="animate-spin text-indigo-600" />
+        <Loader2 className="animate-spin text-indigo-600" size={40} />
       </div>
     );
 
   return (
-    <div className="max-w-7xl mx-auto p-4 space-y-6 bg-slate-50 min-h-screen font-sans">
+    <div className="max-w-7xl mx-auto p-4 space-y-6 bg-slate-50 min-h-screen font-sans relative">
       {/* HEADER SECTION */}
       <div className="flex justify-between items-center bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
         <div className="flex items-center gap-4">
@@ -165,21 +130,26 @@ export default function StockDetailView() {
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-2xl font-black text-slate-900 leading-tight">
+            <h1 className="text-2xl font-black text-slate-900 leading-tight flex items-center gap-3">
               {data?.symbol || symbol}
-            </h1>
-            <div className="flex items-center gap-2 mt-1">
               <div
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider ${getSentTheme(analysis?.sentiment)}`}
+                className={`px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider ${isUp ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-rose-50 text-rose-700 border-rose-100"}`}
               >
                 {analysis?.sentiment || "Analyzing..."}
               </div>
-            </div>
+            </h1>
+            <button
+              onClick={() => navigate(`/strategy/${symbol}`)}
+              className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[10px] shadow-lg shadow-indigo-100 hover:scale-105 transition-all group uppercase tracking-widest"
+            >
+              <Zap size={14} className="fill-white group-hover:animate-pulse" />
+              Open Strategic Command
+            </button>
           </div>
         </div>
         <div className="text-right">
           <div
-            className={`text-4xl font-black ${isUp ? "text-emerald-600" : "text-rose-600"}`}
+            className={`text-4xl font-black ${isUp ? "text-emerald-600" : "text-rose-600"} tracking-tighter`}
           >
             ₹ {formatNum(data?.ratios?.currentPrice)}
           </div>
@@ -197,7 +167,7 @@ export default function StockDetailView() {
       {/* RATIOS & NEWS GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white rounded-2xl p-7 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-y-5 gap-x-12 content-start">
-          <RatioItem label="Market Cap" value={data?.ratios?.marketCap} />
+          <RatioItem label="Market Cap" value={`${data?.ratios?.marketCap}`} />
           <RatioItem
             label="Current Price"
             value={`₹ ${formatNum(data?.ratios?.currentPrice)}`}
@@ -209,11 +179,11 @@ export default function StockDetailView() {
           <RatioItem label="Stock P/E" value={data?.ratios?.stockPE} />
           <RatioItem
             label="Dividend Yield"
-            value={data?.ratios?.dividendYield}
+            value={`${data?.ratios?.dividendYield}%`}
           />
           <RatioItem
             label="ROCE / ROE"
-            value={`${data?.ratios?.roce} / ${data?.ratios?.roe}`}
+            value={`${data?.ratios?.roce}% / ${data?.ratios?.roe}%`}
           />
           <RatioItem
             label="Historical High"
@@ -227,7 +197,7 @@ export default function StockDetailView() {
             <Newspaper className="text-indigo-600" size={18} />
             <h3 className="font-bold text-slate-800 text-sm">Latest News</h3>
           </div>
-          <div className="overflow-y-auto divide-y divide-slate-50">
+          <div className="overflow-y-auto divide-y divide-slate-50 no-scrollbar">
             {!newsLoading &&
               news.map((item, idx) => (
                 <a
@@ -237,20 +207,12 @@ export default function StockDetailView() {
                   rel="noopener noreferrer"
                   className="group block p-4 hover:bg-slate-50 transition-all"
                 >
-                  <div className="flex justify-between items-start gap-3">
-                    <div className="space-y-1">
-                      <span className="text-[9px] font-black text-indigo-600 uppercase">
-                        {item.source}
-                      </span>
-                      <h4 className="text-[12px] font-bold text-slate-700 leading-snug group-hover:text-indigo-600 transition-colors line-clamp-2">
-                        {item.title}
-                      </h4>
-                    </div>
-                    <ArrowUpRight
-                      size={14}
-                      className="text-slate-300 group-hover:text-indigo-600 shrink-0"
-                    />
-                  </div>
+                  <span className="text-[9px] font-black text-indigo-600 uppercase">
+                    {item.source}
+                  </span>
+                  <h4 className="text-[12px] font-bold text-slate-700 leading-snug group-hover:text-indigo-600 line-clamp-2 mt-1">
+                    {item.title}
+                  </h4>
                 </a>
               ))}
           </div>
@@ -261,7 +223,7 @@ export default function StockDetailView() {
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
-            {["1d", "1w", "1m", "3m", "6m", "1y", "max"].map((f) => (
+            {["1d", "1w", "1m", "3m", "6m", "1y", "3y", "max"].map((f) => (
               <button
                 key={f}
                 onClick={() => setRange(f)}
@@ -294,13 +256,13 @@ export default function StockDetailView() {
         </div>
 
         <div
-          className="h-[340px] w-full min-w-0"
-          style={{ position: "relative" }}
+          className="h-[450px] w-full"
+          style={{ position: "relative", minHeight: "450px" }}
         >
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={data?.chartData}
-              margin={{ left: 10, right: 45, bottom: 10, top: 10 }}
+              margin={{ left: 35, right: 10, bottom: 0, top: 10 }}
             >
               <defs>
                 <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
@@ -313,31 +275,46 @@ export default function StockDetailView() {
                 vertical={false}
                 stroke="#f1f5f9"
               />
+
               <XAxis
                 dataKey="date"
                 tickFormatter={renderDateTick}
-                minTickGap={40}
+                minTickGap={50}
                 tick={{ fontSize: 10, fontWeight: 600, fill: "#94a3b8" }}
                 axisLine={false}
                 tickLine={false}
               />
+
+              {/* 2. VOLUME YAXIS (LEFT) WITH LABEL & PROPER MARKINGS */}
               <YAxis
                 yAxisId="vol"
                 orientation="left"
-                domain={[0, (dataMax) => dataMax * 1.1]}
-                tick={false}
+                domain={[0, (dataMax) => dataMax * 1.15]} // Squashes bars to bottom 25%
+                tickFormatter={formatVolumeLabel}
+                tick={{ fontSize: 10, fill: "#64748b", fontWeight: 700 }}
                 axisLine={false}
                 tickLine={false}
+                label={{
+                  value: "Volume",
+                  angle: -90,
+                  position: "insideLeft",
+                  offset: -25,
+                  fill: "#94a3b8",
+                  fontSize: 10,
+                  fontWeight: 800,
+                }}
               />
+
               <YAxis
                 yAxisId="price"
                 orientation="right"
                 domain={["auto", "auto"]}
-                tickCount={6}
+                tickCount={8}
                 tick={{ fontSize: 10, fill: "#64748b", fontWeight: 700 }}
                 axisLine={false}
                 tickLine={false}
               />
+
               <Tooltip
                 content={
                   <CustomTooltip
@@ -351,6 +328,7 @@ export default function StockDetailView() {
                   strokeDasharray: "5 5",
                 }}
               />
+
               <Area
                 yAxisId="price"
                 type="monotone"
@@ -359,27 +337,30 @@ export default function StockDetailView() {
                 fill="url(#colorTrend)"
                 connectNulls
               />
+
+              {/* 1. VOLUME BARS (MORE WEIGHT & VISIBILITY) */}
               {showVolumeAlways && (
                 <Bar
                   yAxisId="vol"
                   dataKey="volume"
-                  fill="#6366f1"
-                  opacity={0.35}
+                  fill="#6366f1" // Strong Indigo
+                  opacity={0.7} // Higher weight
                   radius={[2, 2, 0, 0]}
-                  barSize={range === "1d" ? 25 : range === "1w" ? 15 : 10}
+                  barSize={range === "1d" ? 3 : 8}
                 />
               )}
-              {showPrice && (
-                <Line
-                  yAxisId="price"
-                  type="monotone"
-                  dataKey="price"
-                  stroke={themeColor}
-                  strokeWidth={2.5}
-                  dot={false}
-                  activeDot={{ r: 4, strokeWidth: 0 }}
-                />
-              )}
+
+              <Line
+                yAxisId="price"
+                type="monotone"
+                dataKey="price"
+                stroke={themeColor}
+                strokeWidth={2.5}
+                dot={false}
+                connectNulls={true}
+                activeDot={{ r: 4, strokeWidth: 0 }}
+              />
+
               {showDMA50 && (
                 <Line
                   yAxisId="price"
@@ -388,7 +369,7 @@ export default function StockDetailView() {
                   stroke="#f59e0b"
                   strokeWidth={1.5}
                   dot={false}
-                  connectNulls
+                  connectNulls={true}
                 />
               )}
               {showDMA200 && (
@@ -399,7 +380,7 @@ export default function StockDetailView() {
                   stroke="#64748b"
                   strokeWidth={1.5}
                   dot={false}
-                  connectNulls
+                  connectNulls={true}
                 />
               )}
             </ComposedChart>
@@ -407,7 +388,7 @@ export default function StockDetailView() {
         </div>
       </div>
 
-      {/* FINANCIAL ANALYSIS (Visible on scroll) */}
+      {/* FINANCIAL TABLES */}
       <div className="space-y-8 pt-10">
         <div className="flex flex-wrap bg-white p-2 rounded-2xl shadow-sm border border-slate-100 gap-2 w-fit">
           {[
@@ -419,14 +400,13 @@ export default function StockDetailView() {
             <button
               key={tab.id}
               onClick={() => toggleTable(tab.id)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100 border border-transparent hover:border-slate-200"}`}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600 border border-transparent"}`}
             >
               {visibleTables[tab.id] ? <Eye size={14} /> : <EyeOff size={14} />}{" "}
               {tab.label}
             </button>
           ))}
         </div>
-
         <div className="space-y-16">
           {visibleTables.quarters && (
             <FinancialTable
@@ -456,9 +436,7 @@ const RatioItem = ({ label, value }) => (
   <div className="flex justify-between items-center border-b border-slate-50 pb-2.5">
     <span className="text-slate-400 text-xs font-medium">{label}</span>
     <span className="text-slate-900 font-bold text-xs tracking-tight">
-      {typeof value === "number"
-        ? value.toLocaleString("en-IN")
-        : value || "N/A"}
+      {value || "N/A"}
     </span>
   </div>
 );
@@ -479,27 +457,14 @@ const CustomTooltip = ({ active, payload, range, toggles = {} }) => {
     const dateObj = new Date(data.date);
     let label =
       range === "1d"
-        ? dateObj.toLocaleTimeString("en-IN", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true,
-          })
-        : range === "1w"
-          ? dateObj
-              .toLocaleString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-              .replace(",", " |")
-          : dateObj.toLocaleDateString("en-IN", {
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-            });
+        ? dateObj.toLocaleTimeString("en-IN")
+        : dateObj.toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          });
     return (
-      <div className="bg-slate-900/95 text-white p-3 rounded-2xl text-[11px] shadow-2xl border border-slate-800 min-w-[150px] backdrop-blur-md">
+      <div className="bg-slate-900/95 text-white p-3 rounded-2xl text-[11px] shadow-2xl border border-slate-800 min-w-[170px] backdrop-blur-md">
         <p className="font-black text-indigo-300 border-b border-slate-800 pb-1.5 mb-2 text-center uppercase tracking-tight">
           {label}
         </p>
@@ -511,18 +476,10 @@ const CustomTooltip = ({ active, payload, range, toggles = {} }) => {
             </span>
           </div>
           {toggles?.showDMA50 && data.dmA50 && (
-            <div className="flex justify-between gap-4 border-t border-slate-800/50 pt-1">
+            <div className="flex justify-between gap-4">
               <span className="text-amber-500 font-bold">50 DMA:</span>
-              <span className="font-bold text-amber-200">
+              <span className="font-black text-amber-200">
                 ₹{Number(data.dmA50).toFixed(2)}
-              </span>
-            </div>
-          )}
-          {toggles?.showDMA200 && data.dmA200 && (
-            <div className="flex justify-between gap-4 border-t border-slate-800/50 pt-1">
-              <span className="text-slate-400 font-bold">200 DMA:</span>
-              <span className="font-bold text-slate-300">
-                ₹{Number(data.dmA200).toFixed(2)}
               </span>
             </div>
           )}

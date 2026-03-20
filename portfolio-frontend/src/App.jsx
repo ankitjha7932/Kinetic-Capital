@@ -7,6 +7,7 @@ import HoldingModal from "./components/HoldingModal";
 import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import StrategicTerminal from "./pages/StrategicTerminal";
 import { PlusCircle, LogOut, User } from "lucide-react";
 
 export default function App() {
@@ -95,6 +96,7 @@ export default function App() {
               />
               <Route path="/profile" element={<Profile userId={userId} />} />
               <Route path="*" element={<Navigate to="/" />} />
+              <Route path="/strategy/:symbol" element={<StrategicTerminal />} />
             </Routes>
           </main>
 
