@@ -23,7 +23,7 @@ namespace PortfolioManager.Api.Services
         public StockAnalysisResult AnalyzeStock(StockDetails details)
         {
             if (details?.ChartData == null || !details.ChartData.Any())
-                return null;
+                return new StockAnalysisResult { Sentiment = "No Data", Reasons = new List<string> { "Insufficient chart history for analysis." } };
 
             var chart = details.ChartData.OrderBy(c => c.Date).ToList();
             var latest = chart.Last();
@@ -41,16 +41,14 @@ namespace PortfolioManager.Api.Services
 
             int score = 0;
 
-            // Technical Trend (Moving Averages)
+            // 1. Moving Average Analysis
             if (d50.HasValue && d50.Value > 0)
             {
                 decimal diff50 = ((price - d50.Value) / d50.Value) * 100;
                 result.PerformanceMatrix.Add("vs 50 DMA", $"{Math.Round(diff50, 1):0.0}%");
-
-                if (price > d50.Value)
-                    score++;
-                else
-                    score--;
+                
+                if (price > d50.Value) score++;
+                else score--;
             }
 
             if (d200.HasValue && d200.Value > 0)
@@ -58,65 +56,46 @@ namespace PortfolioManager.Api.Services
                 decimal diff200 = ((price - d200.Value) / d200.Value) * 100;
                 result.PerformanceMatrix.Add("vs 200 DMA", $"{Math.Round(diff200, 1):0.0}%");
 
-                if (d50.HasValue && price > d50.Value && price < d200.Value)
+                if (price > d200.Value)
                 {
-                    result.Reasons.Add(
-                        "Sweet Spot: Recovery above 50 DMA, approaching 200 DMA breakout."
-                    );
-                    score += 2;
+                    score += 2; // Price above 200 DMA is strong long-term bullish
+                    if (d50.HasValue && price > d50.Value && d50.Value < price)
+                        result.Reasons.Add("Golden Setup: Trading above both 50 and 200 DMA.");
                 }
-                else if (price > d200.Value)
+                else
                 {
-                    score++;
+                    score -= 2;
+                    result.Reasons.Add("Caution: Price is currently below the 200-day long-term trend line.");
                 }
             }
 
-            // 2. Volume Analysis (Upsurge / Downsurge)
-            if (chart.Count >= 5)
+            // 2. Volume Analysis
+            if (chart.Count >= 20)
             {
-                // Calculate 20-day avg volume
-                double avgVol = chart
-                    .Take(chart.Count - 1)
-                    .Reverse()
-                    .Take(20)
-                    .Average(c => (double)c.Volume);
-
-                long currentVol = latest.Volume;
-                double volRatio = currentVol / avgVol;
+                // Compare today's volume to the 20-period average
+                double avgVol = chart.Take(chart.Count - 1).TakeLast(20).Average(c => (double)c.Volume);
+                double volRatio = latest.Volume / (avgVol > 0 ? avgVol : 1);
 
                 if (volRatio >= 2.0)
                 {
-                    result.Reasons.Add("Institutional Activity: Massive volume upsurge detected.");
-                    result.PerformanceMatrix.Add("Volume", "High Surge");
+                    result.Reasons.Add("Institutional Infusion: Volume is 2x above the 20-day average.");
+                    result.PerformanceMatrix.Add("Volume Profile", "Heavy Accumulation");
                     score += 2;
                 }
                 else if (volRatio >= 1.5)
                 {
-                    result.Reasons.Add("Strong Volume: Significant upsurge in trading activity.");
-                    result.PerformanceMatrix.Add("Volume", "Upsurge");
+                    result.Reasons.Add("Increasing Interest: Volume upsurge detected.");
                     score++;
-                }
-                else if (volRatio <= 0.5)
-                {
-                    result.Reasons.Add(
-                        "Low Conviction: Volume downsurge suggests lack of interest."
-                    );
-                    result.PerformanceMatrix.Add("Volume", "Downsurge");
-                    score--;
-                }
-                else
-                {
-                    result.PerformanceMatrix.Add("Volume", "Normal");
                 }
             }
 
-            // 3. Final Sentiment Scoring
+            // 3. Score Mapping
             result.Score = score;
             result.Sentiment = score switch
             {
                 >= 4 => "Strongly Bullish",
                 >= 1 => "Positive Momentum",
-                <= -2 => "Bearish Phase",
+                <= -3 => "Bearish Phase",
                 _ => "Neutral / Sideways",
             };
 

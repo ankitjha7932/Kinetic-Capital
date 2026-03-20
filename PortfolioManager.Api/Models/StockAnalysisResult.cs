@@ -24,6 +24,7 @@ namespace PortfolioManager.Api.Models
         public long Volume { get; set; }
         public decimal? DmA50 { get; set; }
         public decimal? DmA200 { get; set; }
+        public bool IsVolumeSpike { get; set; }
     }
 
     public class FundamentalRatios
