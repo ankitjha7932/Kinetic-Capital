@@ -15,6 +15,30 @@ export default function HoldingModal({ userId, isOpen, onClose, onRefresh }) {
         purchaseDate: new Date().toISOString().split('T')[0]
     });
 
+    // FIX: RESET LOGIC
+    const handleClose = () => {
+        setQuery("");
+        setSearchResults([]);
+        setSelectedStock(null);
+        setAnalysis(null);
+        setFormData({
+            quantity: '',
+            avgBuyPrice: '',
+            purchaseDate: new Date().toISOString().split('T')[0]
+        });
+        onClose(); // Call the parent close function
+    };
+
+    // Reset state automatically if the modal is opened/closed from outside
+    useEffect(() => {
+        if (!isOpen) {
+            setQuery("");
+            setSearchResults([]);
+            setSelectedStock(null);
+            setAnalysis(null);
+        }
+    }, [isOpen]);
+
     // 1. Search Logic (Debounced)
     useEffect(() => {
         const delay = setTimeout(async () => {
@@ -33,16 +57,11 @@ export default function HoldingModal({ userId, isOpen, onClose, onRefresh }) {
         setSelectedStock(stock);
         setIsFetchingPrice(true);
         try {
-            // Fetch live price to ensure comparison is based on latest data
             const priceRes = await api.get(`/portfolio/price/${stock.symbol}`);
-            
-            // Auto-fill the price field for the user
             setFormData(prev => ({
                 ...prev,
                 avgBuyPrice: priceRes.data.price
             }));
-
-            // Fetch AI analysis
             const analysisRes = await api.get(`/stocks/analyze/${stock.symbol}`);
             setAnalysis(analysisRes.data);
         } catch (err) { 
@@ -66,11 +85,7 @@ export default function HoldingModal({ userId, isOpen, onClose, onRefresh }) {
 
             await api.post('/holdings', payload);
             onRefresh(); 
-            onClose();
-            
-            // Reset state
-            setSelectedStock(null);
-            setFormData({ quantity: '', avgBuyPrice: '', purchaseDate: new Date().toISOString().split('T')[0] });
+            handleClose(); // Use handleClose to ensure a clean state for next time
         } catch (err) {
             alert("Failed to add stock: " + (err.response?.data || err.message));
         }
@@ -94,7 +109,8 @@ export default function HoldingModal({ userId, isOpen, onClose, onRefresh }) {
                             {selectedStock ? 'Review Position' : 'Search Markets'}
                         </h2>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition"><X size={20} /></button>
+                    {/* UPDATED: Uses handleClose */}
+                    <button onClick={handleClose} className="p-2 hover:bg-slate-100 rounded-full transition"><X size={20} /></button>
                 </div>
 
                 <div className="p-8 overflow-y-auto flex-1">
@@ -104,9 +120,10 @@ export default function HoldingModal({ userId, isOpen, onClose, onRefresh }) {
                             <div className="relative">
                                 <Search className="absolute left-4 top-4 text-slate-400" size={20} />
                                 <input 
-                                    className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                                    className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
                                     placeholder="Search 2,000+ Indian Stocks..."
                                     autoFocus
+                                    value={query}
                                     onChange={e => setQuery(e.target.value)}
                                 />
                             </div>
@@ -139,7 +156,6 @@ export default function HoldingModal({ userId, isOpen, onClose, onRefresh }) {
                                 </div>
                             </div>
 
-                            {/* Live Price Loading State */}
                             {isFetchingPrice && (
                                 <div className="flex items-center gap-2 text-indigo-500 font-bold text-sm">
                                     <Loader2 className="animate-spin" size={16} />
@@ -161,7 +177,7 @@ export default function HoldingModal({ userId, isOpen, onClose, onRefresh }) {
                                         type="number" required
                                         value={formData.quantity}
                                         onChange={e => setFormData({...formData, quantity: e.target.value})}
-                                        className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                                        className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800"
                                         placeholder="0"
                                     />
                                 </div>
@@ -171,17 +187,17 @@ export default function HoldingModal({ userId, isOpen, onClose, onRefresh }) {
                                         type="number" step="0.01" required
                                         value={formData.avgBuyPrice}
                                         onChange={e => setFormData({...formData, avgBuyPrice: e.target.value})}
-                                        className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
+                                        className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800"
                                         placeholder="₹0.00"
                                     />
                                 </div>
                             </div>
 
-                            {/* Action Buttons */}
                             <div className="flex gap-3 pt-2">
+                                {/* UPDATED: Uses handleClose */}
                                 <button 
                                     type="button" 
-                                    onClick={onClose}
+                                    onClick={handleClose}
                                     className="flex-1 bg-slate-100 text-slate-600 py-5 rounded-3xl font-black text-lg hover:bg-slate-200 transition-all"
                                 >
                                     Cancel
