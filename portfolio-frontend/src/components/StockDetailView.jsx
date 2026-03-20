@@ -10,7 +10,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Label,
 } from "recharts";
 import {
   Loader2,
@@ -23,9 +22,9 @@ import {
   EyeOff,
   Info,
   Zap,
-  X,
   Activity,
   BarChart3,
+  X,
 } from "lucide-react";
 import api from "../api/axios";
 import FinancialTable from "./FinancialTable";
@@ -54,7 +53,6 @@ export default function StockDetailView() {
   const [showDMA200, setShowDMA200] = useState(false);
   const [showVolumeAlways, setShowVolumeAlways] = useState(true);
 
-  // Effect: Fetch Sentiment Analysis
   useEffect(() => {
     if (!symbol || symbol === "undefined") return;
     const fetchAnalysis = async () => {
@@ -62,13 +60,12 @@ export default function StockDetailView() {
         const res = await api.get(`/stocks/analyze/${symbol}`);
         setAnalysis(res.data);
       } catch (err) {
-        console.error("Analysis Error:", err);
+        console.error(err);
       }
     };
     fetchAnalysis();
   }, [symbol]);
 
-  // Effect: Fetch News
   useEffect(() => {
     if (!symbol || symbol === "undefined") return;
     const fetchNews = async () => {
@@ -77,7 +74,7 @@ export default function StockDetailView() {
         const res = await api.get(`/portfolio/news/${symbol}`);
         setNews(res.data.slice(0, 7));
       } catch (err) {
-        console.error("News Fetch Error:", err);
+        console.error(err);
       } finally {
         setNewsLoading(false);
       }
@@ -85,7 +82,6 @@ export default function StockDetailView() {
     fetchNews();
   }, [symbol]);
 
-  // Effect: Fetch Stock Details
   useEffect(() => {
     if (!symbol || symbol === "undefined") return;
     const fetchDetails = async () => {
@@ -94,7 +90,7 @@ export default function StockDetailView() {
         const res = await api.get(`/stocks/details/${symbol}?range=${range}`);
         setData(res.data);
       } catch (err) {
-        console.error("Detail Fetch Error:", err);
+        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -107,8 +103,10 @@ export default function StockDetailView() {
 
   const formatNum = (val, decimals = 2) => {
     if (val === null || val === undefined || val === "N/A") return "N/A";
-    const num = Number(val);
-    return isNaN(num) ? "N/A" : num.toFixed(decimals);
+    return Number(val).toLocaleString("en-IN", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
   };
 
   const isUp = data?.ratios?.priceChange >= 0;
@@ -123,17 +121,15 @@ export default function StockDetailView() {
     return "bg-amber-50 text-amber-700 border-amber-100";
   };
 
-  // --- X-AXIS IST DATE FORMATTING ---
   const renderDateTick = (tickItem) => {
     const date = new Date(tickItem);
-    if (range === "1d") {
+    if (range === "1d")
       return date.toLocaleTimeString("en-IN", {
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
       });
-    }
-    if (range === "1w") {
+    if (range === "1w")
       return (
         date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) +
         " " +
@@ -143,7 +139,6 @@ export default function StockDetailView() {
           hour12: false,
         })
       );
-    }
     const options =
       range === "1m" || range === "3m"
         ? { day: "2-digit", month: "short" }
@@ -159,9 +154,9 @@ export default function StockDetailView() {
     );
 
   return (
-    <div className="max-w-7xl mx-auto p-4 space-y-8 bg-slate-50 min-h-screen font-sans pb-24">
+    <div className="max-w-7xl mx-auto p-4 space-y-6 bg-slate-50 min-h-screen font-sans">
       {/* HEADER SECTION */}
-      <div className="flex justify-between items-center bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+      <div className="flex justify-between items-center bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate("/")}
@@ -170,26 +165,15 @@ export default function StockDetailView() {
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-3xl font-black text-slate-900 leading-tight">
+            <h1 className="text-2xl font-black text-slate-900 leading-tight">
               {data?.symbol || symbol}
             </h1>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2 mt-1">
               <div
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider ${getSentTheme(analysis?.sentiment)}`}
               >
-                {analysis?.score >= 1 ? (
-                  <Zap size={12} fill="currentColor" />
-                ) : (
-                  <Activity size={12} />
-                )}
                 {analysis?.sentiment || "Analyzing..."}
               </div>
-              <button
-                onClick={() => setShowAnalysisPanel(true)}
-                className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
-              >
-                <Info size={16} />
-              </button>
             </div>
           </div>
         </div>
@@ -210,71 +194,9 @@ export default function StockDetailView() {
         </div>
       </div>
 
-      {/* ANALYSIS SIDE-OVER PANEL */}
-      {showAnalysisPanel && (
-        <div className="fixed inset-0 z-[100] flex justify-end">
-          <div
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
-            onClick={() => setShowAnalysisPanel(false)}
-          />
-          <div className="relative w-full max-w-md bg-white/95 h-full shadow-2xl p-8 flex flex-col border-l border-white/20">
-            <div className="flex justify-between items-center mb-10">
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight">
-                Kinetic Analysis
-              </h3>
-              <button
-                onClick={() => setShowAnalysisPanel(false)}
-                className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"
-              >
-                <X size={24} />
-              </button>
-            </div>
-            <div className="space-y-8 overflow-y-auto pr-2">
-              <div className="p-8 rounded-[2.5rem] bg-gradient-to-br from-slate-900 to-indigo-950 text-white shadow-xl">
-                <p className="text-[10px] font-black opacity-50 uppercase tracking-widest mb-1">
-                  Current Trend
-                </p>
-                <h4 className="text-3xl font-black mb-6">
-                  {analysis?.sentiment}
-                </h4>
-                <div className="flex justify-between items-end border-t border-white/10 pt-4">
-                  <BarChart3 size={32} className="text-indigo-400 opacity-50" />
-                  <div className="text-right">
-                    <span className="text-[10px] block opacity-40 font-bold uppercase">
-                      Logic Score
-                    </span>
-                    <span className="text-2xl font-black text-indigo-300">
-                      {analysis?.score}/3
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-4">
-                <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                  Key Evidence
-                </h5>
-                {analysis?.reasons.map((reason, idx) => (
-                  <div
-                    key={idx}
-                    className="flex gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-100 transition-colors"
-                  >
-                    <div className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center shrink-0">
-                      <Zap size={14} className="text-indigo-600" />
-                    </div>
-                    <p className="text-sm font-bold text-slate-700 leading-snug">
-                      {reason}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* RATIOS & NEWS SECTION */}
+      {/* RATIOS & NEWS GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-3xl p-8 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12 content-start">
+        <div className="lg:col-span-2 bg-white rounded-2xl p-7 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-y-5 gap-x-12 content-start">
           <RatioItem label="Market Cap" value={data?.ratios?.marketCap} />
           <RatioItem
             label="Current Price"
@@ -300,12 +222,12 @@ export default function StockDetailView() {
           <RatioItem label="Face Value" value={data?.ratios?.faceValue} />
         </div>
 
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
-          <div className="p-6 border-b border-slate-50 flex items-center gap-2 bg-slate-50/50">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden max-h-[300px]">
+          <div className="p-4 border-b border-slate-50 flex items-center gap-2 bg-slate-50/50">
             <Newspaper className="text-indigo-600" size={18} />
             <h3 className="font-bold text-slate-800 text-sm">Latest News</h3>
           </div>
-          <div className="overflow-y-auto max-h-[400px] divide-y divide-slate-50">
+          <div className="overflow-y-auto divide-y divide-slate-50">
             {!newsLoading &&
               news.map((item, idx) => (
                 <a
@@ -337,7 +259,7 @@ export default function StockDetailView() {
 
       {/* CHART SECTION */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex justify-between items-center mb-6">
           <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
             {["1d", "1w", "1m", "3m", "6m", "1y", "max"].map((f) => (
               <button
@@ -372,7 +294,7 @@ export default function StockDetailView() {
         </div>
 
         <div
-          className="h-[300px] w-full min-w-0"
+          className="h-[340px] w-full min-w-0"
           style={{ position: "relative" }}
         >
           <ResponsiveContainer width="100%" height="100%">
@@ -402,7 +324,7 @@ export default function StockDetailView() {
               <YAxis
                 yAxisId="vol"
                 orientation="left"
-                domain={[0, (dataMax) => dataMax * 1.5]}
+                domain={[0, (dataMax) => dataMax * 1.1]}
                 tick={false}
                 axisLine={false}
                 tickLine={false}
@@ -416,7 +338,6 @@ export default function StockDetailView() {
                 axisLine={false}
                 tickLine={false}
               />
-
               <Tooltip
                 content={
                   <CustomTooltip
@@ -430,7 +351,6 @@ export default function StockDetailView() {
                   strokeDasharray: "5 5",
                 }}
               />
-
               <Area
                 yAxisId="price"
                 type="monotone"
@@ -443,9 +363,10 @@ export default function StockDetailView() {
                 <Bar
                   yAxisId="vol"
                   dataKey="volume"
-                  fill="#cbd5e1"
-                  opacity={0.4}
-                  barSize={range === "1d" ? 15 : 6}
+                  fill="#6366f1"
+                  opacity={0.35}
+                  radius={[2, 2, 0, 0]}
+                  barSize={range === "1d" ? 25 : range === "1w" ? 15 : 10}
                 />
               )}
               {showPrice && (
@@ -486,8 +407,8 @@ export default function StockDetailView() {
         </div>
       </div>
 
-      {/* FINANCIAL ANALYSIS TABLES */}
-      <div className="space-y-6">
+      {/* FINANCIAL ANALYSIS (Visible on scroll) */}
+      <div className="space-y-8 pt-10">
         <div className="flex flex-wrap bg-white p-2 rounded-2xl shadow-sm border border-slate-100 gap-2 w-fit">
           {[
             { id: "quarters", label: "Quarterly Results" },
@@ -506,7 +427,7 @@ export default function StockDetailView() {
           ))}
         </div>
 
-        <div className="space-y-12">
+        <div className="space-y-16">
           {visibleTables.quarters && (
             <FinancialTable
               title="Quarterly Results"
@@ -532,9 +453,9 @@ export default function StockDetailView() {
 }
 
 const RatioItem = ({ label, value }) => (
-  <div className="flex justify-between items-center border-b border-slate-50 pb-2">
-    <span className="text-slate-400 text-sm font-medium">{label}</span>
-    <span className="text-slate-900 font-bold text-sm tracking-tight">
+  <div className="flex justify-between items-center border-b border-slate-50 pb-2.5">
+    <span className="text-slate-400 text-xs font-medium">{label}</span>
+    <span className="text-slate-900 font-bold text-xs tracking-tight">
       {typeof value === "number"
         ? value.toLocaleString("en-IN")
         : value || "N/A"}
@@ -552,50 +473,43 @@ const ToggleButton = ({ label, active, onClick, color }) => (
   </button>
 );
 
-// --- RECTANGULAR STRIP COMPONENT ---
 const CustomTooltip = ({ active, payload, range, toggles = {} }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     const dateObj = new Date(data.date);
-
-    let label = "";
-    if (range === "1d")
-      label = dateObj.toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      });
-    else if (range === "1w")
-      label = dateObj
-        .toLocaleString("en-IN", {
-          day: "2-digit",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-        .replace(",", " |");
-    else
-      label = dateObj.toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
-
+    let label =
+      range === "1d"
+        ? dateObj.toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          })
+        : range === "1w"
+          ? dateObj
+              .toLocaleString("en-IN", {
+                day: "2-digit",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+              .replace(",", " |")
+          : dateObj.toLocaleDateString("en-IN", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            });
     return (
-      <div className="bg-slate-900/95 text-white p-3 rounded-2xl text-[11px] shadow-2xl border border-slate-800 min-w-[150px] backdrop-blur-md animate-in fade-in zoom-in duration-200">
-        <p className="font-black text-indigo-300 border-b border-slate-800 pb-1.5 mb-2 text-center tracking-tight uppercase">
+      <div className="bg-slate-900/95 text-white p-3 rounded-2xl text-[11px] shadow-2xl border border-slate-800 min-w-[150px] backdrop-blur-md">
+        <p className="font-black text-indigo-300 border-b border-slate-800 pb-1.5 mb-2 text-center uppercase tracking-tight">
           {label}
         </p>
         <div className="space-y-1.5">
-          {/* ALWAYS SHOWN: PRICE */}
           <div className="flex justify-between gap-4">
             <span className="text-slate-400 font-bold">Price:</span>
             <span className="font-black text-white">
               ₹{Number(data.price || 0).toFixed(2)}
             </span>
           </div>
-
-          {/* CONDITIONAL: 50 DMA */}
           {toggles?.showDMA50 && data.dmA50 && (
             <div className="flex justify-between gap-4 border-t border-slate-800/50 pt-1">
               <span className="text-amber-500 font-bold">50 DMA:</span>
@@ -604,8 +518,6 @@ const CustomTooltip = ({ active, payload, range, toggles = {} }) => {
               </span>
             </div>
           )}
-
-          {/* CONDITIONAL: 200 DMA */}
           {toggles?.showDMA200 && data.dmA200 && (
             <div className="flex justify-between gap-4 border-t border-slate-800/50 pt-1">
               <span className="text-slate-400 font-bold">200 DMA:</span>
@@ -614,8 +526,6 @@ const CustomTooltip = ({ active, payload, range, toggles = {} }) => {
               </span>
             </div>
           )}
-
-          {/* ALWAYS SHOWN: VOLUME */}
           <div className="flex justify-between gap-4 pt-1 border-t border-slate-800">
             <span className="text-slate-500 font-bold">Vol:</span>
             <span className="text-slate-300 font-bold">
