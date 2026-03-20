@@ -2,7 +2,6 @@ using Microsoft.Extensions.Caching.Memory;
 using MongoDB.Driver;
 using PortfolioManager.Api.Models;
 
-
 namespace PortfolioManager.Api.Services;
 
 public class MarketService
@@ -41,27 +40,40 @@ public class MarketService
             await semaphore.WaitAsync();
             try
             {
+                // Range "5d" is correct for getting enough points for an average
                 var history = await _priceService.GetHistoricalDataAsync(f.Symbol, "5d");
-                if (history == null || !history.Prices.Any())
+                if (history == null || history.Prices == null || history.Prices.Count < 2)
                     return;
 
                 var latest = history.Prices.Last();
-                decimal price = (decimal)latest.Close;
+                var pricesList = history.Prices.Select(p => p.Close).ToList();
+                var volumesList = history.Prices.Select(p => (decimal)p.Volume).ToList();
+
+                decimal price = latest.Close;
                 long volume = latest.Volume;
 
+                // Robust parsing for Market Cap (handles "1,234.50 Cr" or "500")
                 decimal marketCapCr = 0;
                 if (!string.IsNullOrEmpty(f.MarketCap) && f.MarketCap != "N/A")
-                    decimal.TryParse(f.MarketCap.Replace(" Cr", "").Trim(), out marketCapCr);
+                {
+                    string cleanMcap = f.MarketCap.Replace(" Cr", "").Replace(",", "").Trim();
+                    decimal.TryParse(cleanMcap, out marketCapCr);
+                }
 
                 if (marketCapCr > 10)
                 {
                     decimal valueTradedCr = (price * volume) / 10000000m;
                     decimal handoverRatio = (valueTradedCr / marketCapCr) * 100;
 
-                    if (handoverRatio >= 5.0m)
+                    // Industry Standard: Compare today's volume vs 5-day average volume
+                    decimal avgVolume = volumesList.Take(volumesList.Count - 1).Average();
+                    decimal volumeShock = (decimal)volume / (avgVolume > 0 ? avgVolume : 1);
+
+                    // REDUCED THRESHOLD: 0.5% of MCAP or 2x Volume Shock
+                    if (handoverRatio >= 0.5m || volumeShock >= 2.0m)
                     {
-                        decimal prevClose =
-                            history.Prices.Count > 1 ? (decimal)history.Prices[^2].Close : price;
+                        decimal prevClose = history.Prices[^2].Close;
+
                         lock (results)
                         {
                             results.Add(
@@ -79,6 +91,10 @@ public class MarketService
                     }
                 }
             }
+            catch (Exception ex)
+            {
+                // Log error for specific symbol if needed
+            }
             finally
             {
                 semaphore.Release();
@@ -87,8 +103,9 @@ public class MarketService
 
         await Task.WhenAll(tasks);
 
+        // Sort by HandoverRatio but only take the top performers
         var finalResult = results.OrderByDescending(r => r.HandoverRatio).Take(30).ToList();
-        _cache.Set(CacheKey, finalResult, TimeSpan.FromHours(4));
+        _cache.Set(CacheKey, finalResult, TimeSpan.FromMinutes(30)); // Reduced cache time for more "Live" feel
 
         return finalResult;
     }
