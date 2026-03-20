@@ -15,7 +15,11 @@ public class AuthController : ControllerBase
     [HttpPost("send-otp")]
     public async Task<IActionResult> SendOtp([FromBody] SendOtpRequest req)
     {
-        var res = await _auth.SendOtpAsync(req.Email);
+        // Pass 'true' if the flow is registration
+        bool isReg = req.Flow?.ToLower() == "register";
+
+        var res = await _auth.SendOtpAsync(req.Email, isReg);
+
         return res.Success ? Ok(new { message = res.Message }) : BadRequest(res.Message);
     }
 
