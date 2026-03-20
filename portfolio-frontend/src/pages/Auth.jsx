@@ -29,7 +29,6 @@ export default function Auth({ onLoginSuccess }) {
 
   const handleInitialSubmit = async (e) => {
     if (e) e.preventDefault();
-    setIsLogin(true);
     setIsLoading(true);
     try {
       if (isLogin) {
@@ -40,7 +39,10 @@ export default function Auth({ onLoginSuccess }) {
         onLoginSuccess(res.data.token, res.data.userId);
         navigate('/'); 
       } else {
-        await api.post('/auth/send-otp', { email: formData.email });
+        await api.post('/auth/send-otp', { 
+          email: formData.email,
+          flow: 'register' 
+        });
         setStep('otp');
         setResendTimer(60);
       }
@@ -109,7 +111,7 @@ export default function Auth({ onLoginSuccess }) {
         <div className="relative">
           <Lock className="absolute left-4 top-4 text-slate-400" size={20} />
           <input 
-            type={showPassword ? "text" : "password"} // Dynamic type
+            type={showPassword ? "text" : "password"}
             placeholder="Password" 
             className="w-full p-4 pl-12 pr-12 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-medium"
             value={formData.password}
