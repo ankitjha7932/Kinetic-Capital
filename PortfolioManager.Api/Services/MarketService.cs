@@ -41,7 +41,7 @@ public class MarketService
             await semaphore.WaitAsync();
             try
             {
-                var history = await _priceService.GetHistoricalDataAsync(f.Symbol, "5d", "1d");
+                var history = await _priceService.GetHistoricalDataAsync(f.Symbol, "5d");
                 if (history == null || !history.Prices.Any())
                     return;
 

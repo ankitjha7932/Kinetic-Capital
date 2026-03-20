@@ -100,17 +100,8 @@ namespace PortfolioManager.Api.Controllers
                 ? symbol.ToUpper()
                 : $"{symbol.ToUpper()}.NS";
 
-            var localStock = _allStocks.FirstOrDefault(s =>
-                s.Symbol.Equals(ticker, StringComparison.OrdinalIgnoreCase)
-            );
-
-            string faceValueFromCsv = localStock?.FaceValue ?? "N/A";
-
-            var details = await _detailsService.GetStockDetailsAsync(
-                ticker,
-                range,
-                faceValueFromCsv
-            );
+            // FIX: Removed the 3rd parameter 'faceValueFromCsv' as the service signature now only takes 2 arguments
+            var details = await _detailsService.GetStockDetailsAsync(ticker, range);
 
             if (details == null)
                 return NotFound(new { message = $"Details unavailable for {ticker}" });
@@ -125,7 +116,8 @@ namespace PortfolioManager.Api.Controllers
                 ? symbol.ToUpper()
                 : $"{symbol.ToUpper()}.NS";
 
-            var resultObj = await _detailsService.GetStockDetailsAsync(ticker, "1y", "N/A");
+            // FIX: Removed the 3rd parameter '"N/A"' to match the updated service signature
+            var resultObj = await _detailsService.GetStockDetailsAsync(ticker, "1y");
 
             if (resultObj == null)
                 return NotFound(new { message = "Stock data not found for analysis" });

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using MongoDB.Driver;
 using PortfolioManager.Api.Models;
 
@@ -24,18 +23,21 @@ public class StockDetailsService
         string ticker = symbol.ToUpper();
         string dbSymbol = ticker.EndsWith(".NS") ? ticker : $"{ticker}.NS";
 
-        var (fetchRange, interval, cutoffTime) = range.ToLower() switch
+        // 1. DYNAMIC FETCH RANGES
+        var (fetchRange, cutoffMode) = range.ToLower() switch
         {
-            "1d" => ("5d", "5m", DateTime.UtcNow.AddDays(-1)), 
-            "1w" => ("1mo", "15m", DateTime.UtcNow.AddDays(-7)),
-            "1m" => ("2y", "1d", DateTime.UtcNow.AddMonths(-1)),
-            "3m" => ("2y", "1d", DateTime.UtcNow.AddMonths(-3)),
-            "6m" => ("2y", "1d", DateTime.UtcNow.AddMonths(-6)),
-            "1y" => ("3y", "1d", DateTime.UtcNow.AddYears(-1)),
-            _ => ("5y", "1d", DateTime.UtcNow.AddYears(-1)),
+            "1d" => ("1d", "today"), // Fetch 1 day of 1m data
+            "1w" => ("5d", "week"), // Fetch 5 days of 5m data
+            "1m" => ("1y", "month"), // Fetch 1y for DMA context
+            "3m" => ("2y", "3month"),
+            "6m" => ("2y", "6month"),
+            "1y" => ("2y", "year"),
+            "3y" => ("5y", "3year"),
+            "max" => ("max", "max"),
+            _ => ("2y", "year"),
         };
 
-        var historyTask = _priceService.GetHistoricalDataAsync(dbSymbol, fetchRange, interval);
+        var historyTask = _priceService.GetHistoricalDataAsync(dbSymbol, fetchRange);
         var mongoTask = _fundamentalCollection
             .Find(f => f.Symbol == dbSymbol)
             .FirstOrDefaultAsync();
@@ -47,18 +49,36 @@ public class StockDetailsService
         if (history == null || !history.Prices.Any())
             return null;
 
-        var allPrices = history.Prices.Select(p => (decimal)p.Close).ToList();
-        decimal currentPrice = allPrices.Last();
-        decimal prevPrice = allPrices.Count > 1 ? allPrices[^2] : currentPrice;
+        var allPrices = history.Prices.Select(p => p.Close).ToList();
 
-        var fullChartPoints = history
+        // 2. PRECISE CUTOFF LOGIC
+        DateTime now = DateTime.UtcNow; // Service uses UTC internally for consistency
+        TimeZoneInfo istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+        DateTime istNow = TimeZoneInfo.ConvertTimeFromUtc(now, istZone);
+
+        DateTime cutoffDate = cutoffMode switch
+        {
+            // Start of today's session (9:15 AM IST)
+            "today" => new DateTime(istNow.Year, istNow.Month, istNow.Day, 9, 15, 0),
+            "week" => istNow.AddDays(-7),
+            "month" => istNow.AddMonths(-1),
+            "3month" => istNow.AddMonths(-3),
+            "year" => istNow.AddMonths(-12),
+            "3year" => istNow.AddMonths(-36),
+            "max" => DateTime.MinValue,
+            _ => istNow.AddMonths(-12),
+        };
+
+        // 3. MAP CHART DATA
+        var chartPoints = history
             .Prices.Select(
                 (p, i) =>
                     new ChartDataPoint
                     {
                         Date = p.Date,
-                        Price = Math.Round((decimal)p.Close, 2),
+                        Price = Math.Round(p.Close, 2),
                         Volume = p.Volume,
+                        // DMAs will naturally be null for 1d/1w because there aren't enough points in the fetchRange
                         DmA50 =
                             i < 49
                                 ? null
@@ -71,53 +91,54 @@ public class StockDetailsService
                                     Math.Round(allPrices.Skip(i - 199).Take(200).Average(), 2),
                     }
             )
+            .Where(d => d.Date >= cutoffDate)
             .ToList();
+
+        // Fallback: If "Today" has no data yet (pre-market), show the full 1d fetch
+        if (range == "1d" && chartPoints.Count < 2)
+            chartPoints = history
+                .Prices.Select(p => new ChartDataPoint
+                {
+                    Date = p.Date,
+                    Price = p.Close,
+                    Volume = p.Volume,
+                })
+                .ToList();
 
         return new StockDetails
         {
             Symbol = ticker,
             Industry = fundamentals?.Industry ?? "N/A",
-            LastUpdate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-
             Ratios = new FundamentalRatios
             {
-                CurrentPrice = Math.Round(currentPrice, 2),
-                PriceChange = Math.Round(currentPrice - prevPrice, 2),
-                PriceChangePercent = Math.Round(((currentPrice - prevPrice) / prevPrice) * 100, 2),
-                MarketCap =
-                    (fundamentals?.MarketCap ?? "N/A")
-                    + (fundamentals?.MarketCap != null ? " Cr" : ""),
+                CurrentPrice = Math.Round(allPrices.Last(), 2),
+                PriceChange = Math.Round(
+                    allPrices.Last() - (allPrices.Count > 1 ? allPrices[^2] : allPrices.Last()),
+                    2
+                ),
+                PriceChangePercent =
+                    allPrices.Count > 1
+                        ? Math.Round(((allPrices.Last() - allPrices[^2]) / allPrices[^2]) * 100, 2)
+                        : 0,
+                MarketCap = fundamentals?.MarketCap ?? "N/A",
                 StockPE = fundamentals?.StockPE ?? "N/A",
                 ROCE = fundamentals?.ROCE ?? "N/A",
                 ROE = fundamentals?.ROE ?? "N/A",
-                BookValue = fundamentals?.BookValue ?? "N/A",
-                DividendYield = fundamentals?.DividendYield ?? "N/A",
-                FaceValue = faceValue,
-                High52W = Math.Round(
-                    allPrices
-                        .Where((p, idx) => history.Prices[idx].Date >= DateTime.UtcNow.AddYears(-1))
-                        .DefaultIfEmpty(currentPrice)
-                        .Max(),
-                    2
-                ),
-                Low52W = Math.Round(
-                    allPrices
-                        .Where((p, idx) => history.Prices[idx].Date >= DateTime.UtcNow.AddYears(-1))
-                        .DefaultIfEmpty(currentPrice)
-                        .Min(),
-                    2
-                ),
                 HistoricalHigh = Math.Round(allPrices.Max(), 2),
                 HistoricalLow = Math.Round(allPrices.Min(), 2),
+                FaceValue = faceValue,
             },
-
+            ChartData = chartPoints,
             QuarterlyResults = fundamentals?.QuarterlyResults ?? new(),
             ProfitAndLoss = fundamentals?.ProfitAndLoss ?? new(),
             BalanceSheet = fundamentals?.BalanceSheet ?? new(),
             CashFlow = fundamentals?.CashFlow ?? new(),
             Peers = fundamentals?.Peers ?? new(),
-
-            ChartData = fullChartPoints.Where(d => d.Date >= cutoffTime).ToList(),
         };
     }
+
+    private string SanitizeTicker(string symbol) =>
+        symbol.ToUpper().EndsWith(".NS") || symbol.ToUpper().EndsWith(".BO")
+            ? symbol.ToUpper()
+            : $"{symbol.ToUpper()}.NS";
 }
