@@ -3,6 +3,7 @@ namespace PortfolioManager.Api.Models
     public class SendOtpRequest
     {
         public string Email { get; set; }
+        public string? Flow { get; set; }
     }
 
     public class VerifyOtpRequest
