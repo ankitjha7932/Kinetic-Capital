@@ -22,8 +22,11 @@ import {
   X,
   CheckCircle2,
   AlertCircle,
-  Eye, // <--- Added these
-  EyeOff, // <--- Added these
+  Eye,
+  EyeOff,
+  ArrowUp,
+  ArrowDown,
+  Activity,
 } from "lucide-react";
 import api from "../api/axios";
 import FinancialTable from "./FinancialTable";
@@ -37,7 +40,7 @@ export default function StockDetailView() {
   const [news, setNews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newsLoading, setNewsLoading] = useState(true);
-  const [range, setRange] = useState("1y");
+  const [range, setRange] = useState("1d");
 
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
 
@@ -94,6 +97,7 @@ export default function StockDetailView() {
   };
 
   const isUp = data?.ratios?.priceChange >= 0;
+  const isPeriodPositive = data?.periodReturn >= 0;
   const themeColor = isUp ? "#10b981" : "#f43f5e";
 
   const renderDateTick = (tickItem) => {
@@ -155,7 +159,6 @@ export default function StockDetailView() {
                   <X size={20} />
                 </button>
               </div>
-
               <div className="grid grid-cols-2 gap-3 mb-8">
                 {Object.entries(analysis.performanceMatrix || {}).map(
                   ([key, val]) => (
@@ -173,11 +176,7 @@ export default function StockDetailView() {
                   ),
                 )}
               </div>
-
               <div className="space-y-4">
-                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-                  Logic Breakdown
-                </p>
                 {analysis.reasons?.map((reason, i) => (
                   <div key={i} className="flex gap-3 items-start group">
                     <div className="mt-0.5">
@@ -193,10 +192,9 @@ export default function StockDetailView() {
                   </div>
                 ))}
               </div>
-
               <button
                 onClick={() => setIsAnalysisModalOpen(false)}
-                className="w-full mt-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-xl shadow-slate-200"
+                className="w-full mt-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase hover:bg-indigo-600 transition-all"
               >
                 Close Report
               </button>
@@ -219,8 +217,7 @@ export default function StockDetailView() {
               {data?.symbol || symbol}
               <button
                 onClick={() => setIsAnalysisModalOpen(true)}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm
-                  ${isUp ? "bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100" : "bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100"}`}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-sm ${isUp ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-rose-50 text-rose-700 border-rose-100"}`}
               >
                 <Info size={12} className="opacity-70" />
                 {analysis?.sentiment || "Analyzing..."}
@@ -228,10 +225,9 @@ export default function StockDetailView() {
             </h1>
             <button
               onClick={() => navigate(`/strategy/${symbol}`)}
-              className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[10px] shadow-lg shadow-indigo-100 hover:scale-105 transition-all group uppercase tracking-widest"
+              className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase shadow-lg shadow-indigo-100"
             >
-              <Zap size={14} className="fill-white group-hover:animate-pulse" />
-              Open Strategic Command
+              <Zap size={14} className="fill-white" /> Open Strategic Command
             </button>
           </div>
         </div>
@@ -244,8 +240,7 @@ export default function StockDetailView() {
           <div
             className={`flex items-center justify-end gap-1 text-sm font-bold ${isUp ? "text-emerald-500" : "text-rose-500"}`}
           >
-            {isUp ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-            {isUp ? "+" : ""}
+            {isUp ? <TrendingUp size={16} /> : <TrendingDown size={16} />}{" "}
             {formatNum(data?.ratios?.priceChange)} (
             {formatNum(data?.ratios?.priceChangePercent)}%)
           </div>
@@ -307,8 +302,56 @@ export default function StockDetailView() {
         </div>
       </div>
 
-      {/* CHART */}
+      {/* CHART SECTION */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+        {/* --- MODERN PERIOD STATS CARDS --- */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-slate-50/50 border border-slate-100 p-4 rounded-2xl flex items-center gap-4">
+            <div className="p-2 bg-white rounded-xl text-emerald-500 shadow-sm">
+              <ArrowUp size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Period High
+              </p>
+              <p className="text-lg font-black text-slate-900 tracking-tight">
+                ₹{formatNum(data?.periodHigh)}
+              </p>
+            </div>
+          </div>
+          <div className="bg-slate-50/50 border border-slate-100 p-4 rounded-2xl flex items-center gap-4">
+            <div className="p-2 bg-white rounded-xl text-rose-500 shadow-sm">
+              <ArrowDown size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Period Low
+              </p>
+              <p className="text-lg font-black text-slate-900 tracking-tight">
+                ₹{formatNum(data?.periodLow)}
+              </p>
+            </div>
+          </div>
+          <div className="bg-slate-50/50 border border-slate-100 p-4 rounded-2xl flex items-center gap-4">
+            <div
+              className={`p-2 bg-white rounded-xl shadow-sm ${isPeriodPositive ? "text-emerald-500" : "text-rose-500"}`}
+            >
+              <Activity size={18} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                Period Return
+              </p>
+              <p
+                className={`text-lg font-black tracking-tight ${isPeriodPositive ? "text-emerald-600" : "text-rose-600"}`}
+              >
+                {isPeriodPositive ? "+" : ""}
+                {formatNum(data?.periodReturn)}%
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="flex justify-between items-center mb-6">
           <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
             {["1d", "1w", "1m", "3m", "6m", "1y", "3y", "max"].map((f) => (
@@ -347,7 +390,7 @@ export default function StockDetailView() {
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={data?.chartData}
-              margin={{ left: 35, right: 10, bottom: 0, top: 10 }}
+              margin={{ left: 10, right: 10, bottom: 0, top: 20 }}
             >
               <defs>
                 <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
@@ -368,15 +411,31 @@ export default function StockDetailView() {
                 axisLine={false}
                 tickLine={false}
               />
+
+              {/* --- LEFT Y-AXIS (VOLUME) WITH LABEL --- */}
               <YAxis
                 yAxisId="vol"
                 orientation="left"
-                domain={[0, (dataMax) => dataMax * 1.15]}
+                domain={[0, (dataMax) => dataMax * 1.5]}
                 tickFormatter={formatVolumeLabel}
-                tick={{ fontSize: 10, fill: "#64748b", fontWeight: 700 }}
+                tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
                 axisLine={false}
                 tickLine={false}
+                label={{
+                  value: "VOLUME",
+                  angle: -90,
+                  position: "insideLeft",
+                  offset: 10,
+                  style: {
+                    fill: "#cbd5e1",
+                    fontSize: 9,
+                    fontWeight: 900,
+                    letterSpacing: "0.1em",
+                  },
+                }}
               />
+
+              {/* --- RIGHT Y-AXIS (PRICE) WITH LABEL --- */}
               <YAxis
                 yAxisId="price"
                 orientation="right"
@@ -385,7 +444,20 @@ export default function StockDetailView() {
                 tick={{ fontSize: 10, fill: "#64748b", fontWeight: 700 }}
                 axisLine={false}
                 tickLine={false}
+                label={{
+                  value: "PRICE (₹)",
+                  angle: 90,
+                  position: "insideRight",
+                  offset: 10,
+                  style: {
+                    fill: "#cbd5e1",
+                    fontSize: 9,
+                    fontWeight: 900,
+                    letterSpacing: "0.1em",
+                  },
+                }}
               />
+
               <Tooltip
                 content={
                   <CustomTooltip
@@ -412,7 +484,7 @@ export default function StockDetailView() {
                   yAxisId="vol"
                   dataKey="volume"
                   fill="#6366f1"
-                  opacity={0.7}
+                  opacity={0.6}
                   radius={[2, 2, 0, 0]}
                   barSize={range === "1d" ? 3 : 8}
                 />
@@ -453,7 +525,7 @@ export default function StockDetailView() {
         </div>
       </div>
 
-      {/* TABLES */}
+      {/* FINANCIALS */}
       <div className="space-y-8 pt-10">
         <div className="flex flex-wrap bg-white p-2 rounded-2xl shadow-sm border border-slate-100 gap-2 w-fit">
           {[
@@ -465,7 +537,7 @@ export default function StockDetailView() {
             <button
               key={tab.id}
               onClick={() => toggleTable(tab.id)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600 border border-transparent"}`}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 border border-transparent"}`}
             >
               {visibleTables[tab.id] ? <Eye size={14} /> : <EyeOff size={14} />}{" "}
               {tab.label}
