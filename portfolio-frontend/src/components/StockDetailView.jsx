@@ -17,10 +17,13 @@ import {
   TrendingUp,
   TrendingDown,
   Newspaper,
-  ArrowUpRight,
-  Eye,
-  EyeOff,
   Zap,
+  Info,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Eye, // <--- Added these
+  EyeOff, // <--- Added these
 } from "lucide-react";
 import api from "../api/axios";
 import FinancialTable from "./FinancialTable";
@@ -35,6 +38,8 @@ export default function StockDetailView() {
   const [loading, setLoading] = useState(true);
   const [newsLoading, setNewsLoading] = useState(true);
   const [range, setRange] = useState("1y");
+
+  const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
 
   const [visibleTables, setVisibleTables] = useState({
     quarters: true,
@@ -81,7 +86,6 @@ export default function StockDetailView() {
     });
   };
 
-  // 2. HELPER: Proper markings for Volume Y-Axis (Left)
   const formatVolumeLabel = (val) => {
     if (val >= 10000000) return `${(val / 10000000).toFixed(1)}Cr`;
     if (val >= 1000000) return `${(val / 1000000).toFixed(1)}M`;
@@ -120,7 +124,88 @@ export default function StockDetailView() {
 
   return (
     <div className="max-w-7xl mx-auto p-4 space-y-6 bg-slate-50 min-h-screen font-sans relative">
-      {/* HEADER SECTION */}
+      {/* --- ANALYSIS MODAL --- */}
+      {isAnalysisModalOpen && analysis && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+            onClick={() => setIsAnalysisModalOpen(false)}
+          />
+          <div className="relative bg-white w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden border border-slate-100">
+            <div
+              className={`h-2 w-full ${analysis.score >= 1 ? "bg-emerald-500" : "bg-rose-500"}`}
+            />
+            <div className="p-8">
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                    Intelligence Core
+                  </p>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    {analysis.sentiment}
+                    <span className="text-xs px-2 py-0.5 bg-slate-100 rounded-lg text-slate-500">
+                      Score: {analysis.score}
+                    </span>
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setIsAnalysisModalOpen(false)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-8">
+                {Object.entries(analysis.performanceMatrix || {}).map(
+                  ([key, val]) => (
+                    <div
+                      key={key}
+                      className="bg-slate-50 p-4 rounded-2xl border border-slate-100/50"
+                    >
+                      <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">
+                        {key}
+                      </p>
+                      <p className="text-sm font-black text-slate-800 tracking-tight">
+                        {val}
+                      </p>
+                    </div>
+                  ),
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                  Logic Breakdown
+                </p>
+                {analysis.reasons?.map((reason, i) => (
+                  <div key={i} className="flex gap-3 items-start group">
+                    <div className="mt-0.5">
+                      {analysis.score >= 1 ? (
+                        <CheckCircle2 size={16} className="text-emerald-500" />
+                      ) : (
+                        <AlertCircle size={16} className="text-rose-500" />
+                      )}
+                    </div>
+                    <p className="text-[13px] text-slate-600 font-medium leading-relaxed group-hover:text-slate-900 transition-colors">
+                      {reason}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setIsAnalysisModalOpen(false)}
+                className="w-full mt-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-600 transition-all shadow-xl shadow-slate-200"
+              >
+                Close Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HEADER */}
       <div className="flex justify-between items-center bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
         <div className="flex items-center gap-4">
           <button
@@ -132,11 +217,14 @@ export default function StockDetailView() {
           <div>
             <h1 className="text-2xl font-black text-slate-900 leading-tight flex items-center gap-3">
               {data?.symbol || symbol}
-              <div
-                className={`px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider ${isUp ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-rose-50 text-rose-700 border-rose-100"}`}
+              <button
+                onClick={() => setIsAnalysisModalOpen(true)}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-sm
+                  ${isUp ? "bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100" : "bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100"}`}
               >
+                <Info size={12} className="opacity-70" />
                 {analysis?.sentiment || "Analyzing..."}
-              </div>
+              </button>
             </h1>
             <button
               onClick={() => navigate(`/strategy/${symbol}`)}
@@ -164,7 +252,7 @@ export default function StockDetailView() {
         </div>
       </div>
 
-      {/* RATIOS & NEWS GRID */}
+      {/* RATIOS & NEWS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-white rounded-2xl p-7 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-y-5 gap-x-12 content-start">
           <RatioItem label="Market Cap" value={`${data?.ratios?.marketCap}`} />
@@ -183,7 +271,7 @@ export default function StockDetailView() {
           />
           <RatioItem
             label="ROCE / ROE"
-            value={`${data?.ratios?.roce}% / ${data?.ratios?.roe}%`}
+            value={`${data?.ratios?.roce} / ${data?.ratios?.roe}`}
           />
           <RatioItem
             label="Historical High"
@@ -197,7 +285,7 @@ export default function StockDetailView() {
             <Newspaper className="text-indigo-600" size={18} />
             <h3 className="font-bold text-slate-800 text-sm">Latest News</h3>
           </div>
-          <div className="overflow-y-auto divide-y divide-slate-50 no-scrollbar">
+          <div className="overflow-y-auto divide-y divide-slate-50">
             {!newsLoading &&
               news.map((item, idx) => (
                 <a
@@ -219,7 +307,7 @@ export default function StockDetailView() {
         </div>
       </div>
 
-      {/* CHART SECTION */}
+      {/* CHART */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
         <div className="flex justify-between items-center mb-6">
           <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
@@ -255,10 +343,7 @@ export default function StockDetailView() {
           </div>
         </div>
 
-        <div
-          className="h-[450px] w-full"
-          style={{ position: "relative", minHeight: "450px" }}
-        >
+        <div className="h-[450px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={data?.chartData}
@@ -275,7 +360,6 @@ export default function StockDetailView() {
                 vertical={false}
                 stroke="#f1f5f9"
               />
-
               <XAxis
                 dataKey="date"
                 tickFormatter={renderDateTick}
@@ -284,27 +368,15 @@ export default function StockDetailView() {
                 axisLine={false}
                 tickLine={false}
               />
-
-              {/* 2. VOLUME YAXIS (LEFT) WITH LABEL & PROPER MARKINGS */}
               <YAxis
                 yAxisId="vol"
                 orientation="left"
-                domain={[0, (dataMax) => dataMax * 1.15]} // Squashes bars to bottom 25%
+                domain={[0, (dataMax) => dataMax * 1.15]}
                 tickFormatter={formatVolumeLabel}
                 tick={{ fontSize: 10, fill: "#64748b", fontWeight: 700 }}
                 axisLine={false}
                 tickLine={false}
-                label={{
-                  value: "Volume",
-                  angle: -90,
-                  position: "insideLeft",
-                  offset: -25,
-                  fill: "#94a3b8",
-                  fontSize: 10,
-                  fontWeight: 800,
-                }}
               />
-
               <YAxis
                 yAxisId="price"
                 orientation="right"
@@ -314,7 +386,6 @@ export default function StockDetailView() {
                 axisLine={false}
                 tickLine={false}
               />
-
               <Tooltip
                 content={
                   <CustomTooltip
@@ -328,7 +399,6 @@ export default function StockDetailView() {
                   strokeDasharray: "5 5",
                 }}
               />
-
               <Area
                 yAxisId="price"
                 type="monotone"
@@ -337,19 +407,16 @@ export default function StockDetailView() {
                 fill="url(#colorTrend)"
                 connectNulls
               />
-
-              {/* 1. VOLUME BARS (MORE WEIGHT & VISIBILITY) */}
               {showVolumeAlways && (
                 <Bar
                   yAxisId="vol"
                   dataKey="volume"
-                  fill="#6366f1" // Strong Indigo
-                  opacity={0.7} // Higher weight
+                  fill="#6366f1"
+                  opacity={0.7}
                   radius={[2, 2, 0, 0]}
                   barSize={range === "1d" ? 3 : 8}
                 />
               )}
-
               <Line
                 yAxisId="price"
                 type="monotone"
@@ -358,9 +425,7 @@ export default function StockDetailView() {
                 strokeWidth={2.5}
                 dot={false}
                 connectNulls={true}
-                activeDot={{ r: 4, strokeWidth: 0 }}
               />
-
               {showDMA50 && (
                 <Line
                   yAxisId="price"
@@ -388,7 +453,7 @@ export default function StockDetailView() {
         </div>
       </div>
 
-      {/* FINANCIAL TABLES */}
+      {/* TABLES */}
       <div className="space-y-8 pt-10">
         <div className="flex flex-wrap bg-white p-2 rounded-2xl shadow-sm border border-slate-100 gap-2 w-fit">
           {[
