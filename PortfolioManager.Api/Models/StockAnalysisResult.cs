@@ -15,6 +15,7 @@ namespace PortfolioManager.Api.Models
         public List<FinancialRow> BalanceSheet { get; set; } = new();
         public List<FinancialRow> CashFlow { get; set; } = new();
         public List<PeerData> Peers { get; set; } = new();
+        public StockAnalysisResult? Analysis { get; set; }
     }
 
     public class ChartDataPoint

@@ -24,6 +24,7 @@ public class MarketService
 
     public async Task<List<MarketMomentum>> GetHighInfusionStocksAsync()
     {
+        // 1. Check Cache (Keep for 4 hours as requested)
         if (_cache.TryGetValue(CacheKey, out List<MarketMomentum>? cachedData))
             return cachedData!;
 
@@ -33,26 +34,23 @@ public class MarketService
             .ToListAsync();
 
         var results = new List<MarketMomentum>();
-        var semaphore = new SemaphoreSlim(15);
+        var semaphore = new SemaphoreSlim(15); // Process 15 stocks at a time to avoid Yahoo blocking
 
         var tasks = allFundamentals.Select(async f =>
         {
             await semaphore.WaitAsync();
             try
             {
-                // Range "5d" is correct for getting enough points for an average
-                var history = await _priceService.GetHistoricalDataAsync(f.Symbol, "5d");
-                if (history == null || history.Prices == null || history.Prices.Count < 2)
+                // Fetch 1 month of Daily data to get 'Today's' total daily volume
+                var history = await _priceService.GetHistoricalDataAsync(f.Symbol, "1mo");
+                if (history == null || history.Prices.Count < 2)
                     return;
 
                 var latest = history.Prices.Last();
-                var pricesList = history.Prices.Select(p => p.Close).ToList();
-                var volumesList = history.Prices.Select(p => (decimal)p.Volume).ToList();
-
                 decimal price = latest.Close;
-                long volume = latest.Volume;
+                long totalDailyVolume = latest.Volume;
 
-                // Robust parsing for Market Cap (handles "1,234.50 Cr" or "500")
+                // Robust parsing for Market Cap Cr
                 decimal marketCapCr = 0;
                 if (!string.IsNullOrEmpty(f.MarketCap) && f.MarketCap != "N/A")
                 {
@@ -60,40 +58,31 @@ public class MarketService
                     decimal.TryParse(cleanMcap, out marketCapCr);
                 }
 
-                if (marketCapCr > 10)
+                if (marketCapCr > 1) // Ignore penny shells
                 {
-                    decimal valueTradedCr = (price * volume) / 10000000m;
+                    // Value Traded today in Crores
+                    decimal valueTradedCr = (price * totalDailyVolume) / 10000000m;
+
+                    // HANDOVER RATIO: What % of the company changed hands today?
                     decimal handoverRatio = (valueTradedCr / marketCapCr) * 100;
 
-                    // Industry Standard: Compare today's volume vs 5-day average volume
-                    decimal avgVolume = volumesList.Take(volumesList.Count - 1).Average();
-                    decimal volumeShock = (decimal)volume / (avgVolume > 0 ? avgVolume : 1);
+                    decimal prevClose = history.Prices[^2].Close;
 
-                    // REDUCED THRESHOLD: 0.5% of MCAP or 2x Volume Shock
-                    if (handoverRatio >= 0.5m || volumeShock >= 2.0m)
+                    lock (results)
                     {
-                        decimal prevClose = history.Prices[^2].Close;
-
-                        lock (results)
-                        {
-                            results.Add(
-                                new MarketMomentum(
-                                    f.Symbol.Replace(".NS", ""),
-                                    Math.Round(price, 2),
-                                    volume,
-                                    Math.Round(valueTradedCr, 2),
-                                    marketCapCr,
-                                    Math.Round(handoverRatio, 2),
-                                    Math.Round(((price - prevClose) / prevClose) * 100, 2)
-                                )
-                            );
-                        }
+                        results.Add(
+                            new MarketMomentum(
+                                f.Symbol.Replace(".NS", ""),
+                                Math.Round(price, 2),
+                                totalDailyVolume,
+                                Math.Round(valueTradedCr, 2),
+                                marketCapCr,
+                                Math.Round(handoverRatio, 4), // High precision for sorting
+                                Math.Round(((price - prevClose) / prevClose) * 100, 2)
+                            )
+                        );
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                // Log error for specific symbol if needed
             }
             finally
             {
@@ -103,9 +92,14 @@ public class MarketService
 
         await Task.WhenAll(tasks);
 
-        // Sort by HandoverRatio but only take the top performers
-        var finalResult = results.OrderByDescending(r => r.HandoverRatio).Take(30).ToList();
-        _cache.Set(CacheKey, finalResult, TimeSpan.FromMinutes(30)); // Reduced cache time for more "Live" feel
+        // SORT BY MAXIMUM VOLUME VS MARKET CAP (Handover Ratio)
+        var finalResult = results
+            .OrderByDescending(r => r.HandoverRatio)
+            .Take(50) // Top 50 "Infusion" stocks
+            .ToList();
+
+        // Cache for 4 hours (Effect of volume takes time to show)
+        _cache.Set(CacheKey, finalResult, TimeSpan.FromHours(4));
 
         return finalResult;
     }
