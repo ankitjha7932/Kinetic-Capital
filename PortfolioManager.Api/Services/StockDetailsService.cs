@@ -21,14 +21,11 @@ namespace PortfolioManager.Api.Services
             _analysisService = analysisService;
         }
 
-        public async Task<StockDetails?> GetStockDetailsAsync(string symbol, string range = "1y")
+        public async Task<StockDetails?> GetStockDetailsAsync(string symbol, string range = "1d")
         {
             string ticker = symbol.ToUpper();
             string dbSymbol = SanitizeTicker(ticker);
 
-            // 1. DATA PADDING STRATEGY
-            // We fetch extra data (3y) so that the 200 DMA line is pre-calculated
-            // even if the user only asks for a 1-month chart.
             var (fetchRange, cutoffMode) = range.ToLower() switch
             {
                 "1d" => ("5d", "today"),
@@ -41,7 +38,6 @@ namespace PortfolioManager.Api.Services
                 _ => ("3y", "year"),
             };
 
-            // 2. CONCURRENT FETCH
             var historyTask = _priceService.GetHistoricalDataAsync(dbSymbol, fetchRange);
             var mongoTask = _fundamentalCollection
                 .Find(f => f.Symbol == dbSymbol)
@@ -57,7 +53,6 @@ namespace PortfolioManager.Api.Services
             if (history == null || !history.Prices.Any())
                 return null;
 
-            // 3. IST TIMEZONE & FILTERING LOGIC
             TimeZoneInfo istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
             DateTime istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, istZone);
 
@@ -73,38 +68,49 @@ namespace PortfolioManager.Api.Services
                 _ => istNow.AddMonths(-12),
             };
 
-            // 4. MAP CHART DATA & DMA (Using full padded list for calculations)
-            var allPrices = history.Prices.Select(p => p.Close).ToList();
-            var chartPoints = history
-                .Prices.Select(
+            var allPrices = history.Prices.OrderBy(p => p.Date).ToList();
+            var chartPoints = allPrices
+                .Select(
                     (p, i) =>
                         new ChartDataPoint
                         {
                             Date = p.Date,
                             Price = Math.Round(p.Close, 2),
                             Volume = p.Volume,
-                            // DMA: Calculate using the full list, but filter the points later
                             DmA50 =
                                 i < 49
                                     ? null
                                     : (decimal?)
-                                        Math.Round(allPrices.Skip(i - 49).Take(50).Average(), 2),
+                                        Math.Round(
+                                            allPrices
+                                                .Skip(i - 49)
+                                                .Take(50)
+                                                .Select(x => x.Close)
+                                                .Average(),
+                                            2
+                                        ),
                             DmA200 =
                                 i < 199
                                     ? null
                                     : (decimal?)
-                                        Math.Round(allPrices.Skip(i - 199).Take(200).Average(), 2),
+                                        Math.Round(
+                                            allPrices
+                                                .Skip(i - 199)
+                                                .Take(200)
+                                                .Select(x => x.Close)
+                                                .Average(),
+                                            2
+                                        ),
                         }
                 )
-                .Where(d => d.Date >= cutoffDate) // Filter for the specific range requested
+                .Where(d => d.Date >= cutoffDate)
                 .ToList();
 
-            // 5. FALLBACK: IF MARKET CLOSED (Weekend/Holiday)
             if (cutoffMode == "today" && chartPoints.Count < 5)
             {
-                var lastActiveDate = history.Prices.Last().Date.Date;
-                chartPoints = history
-                    .Prices.Where(p => p.Date.Date == lastActiveDate)
+                var lastActiveDate = allPrices.Last().Date.Date;
+                chartPoints = allPrices
+                    .Where(p => p.Date.Date == lastActiveDate)
                     .Select(p => new ChartDataPoint
                     {
                         Date = p.Date,
@@ -114,37 +120,53 @@ namespace PortfolioManager.Api.Services
                     .ToList();
             }
 
-            // 6. EXTRACT LIVE PRICE & CHANGE FROM YAHOO SUMMARY
-            decimal curPrice = allPrices.Last(),
-                pChange = 0,
-                pChangePct = 0;
+            decimal currentPrice = allPrices.Last().Close;
+            decimal dailyChange = 0;
+            decimal dailyPct = 0;
+
             if (yahooSummary.HasValue)
             {
                 try
                 {
-                    var priceObj = yahooSummary.Value.GetProperty("price");
-                    curPrice = priceObj
-                        .GetProperty("regularMarketPrice")
+                    var pObj = yahooSummary.Value.GetProperty("price");
+                    currentPrice = pObj.GetProperty("regularMarketPrice")
                         .GetProperty("raw")
                         .GetDecimal();
-                    pChange = priceObj
-                        .GetProperty("regularMarketChange")
+                    dailyChange = pObj.GetProperty("regularMarketChange")
                         .GetProperty("raw")
                         .GetDecimal();
-                    pChangePct =
-                        priceObj
-                            .GetProperty("regularMarketChangePercent")
+                    dailyPct =
+                        pObj.GetProperty("regularMarketChangePercent")
                             .GetProperty("raw")
                             .GetDecimal() * 100;
                 }
-                catch
-                {
-                    // Fallback to last close if property missing
-                    curPrice = allPrices.Last();
-                }
+                catch { }
             }
 
-            // 7. ASSEMBLE FINAL OBJECT
+            if (dailyChange == 0 && allPrices.Count > 1)
+            {
+                decimal lastClose = allPrices.Last().Close;
+                decimal prevClose =
+                    allPrices.Count > 1 ? allPrices[allPrices.Count - 2].Close : lastClose;
+                dailyChange = lastClose - prevClose;
+                dailyPct = prevClose != 0 ? (dailyChange / prevClose) * 100 : 0;
+            }
+
+            decimal periodHigh = chartPoints.Any() ? chartPoints.Max(p => p.Price) : currentPrice;
+            decimal periodLow = chartPoints.Any() ? chartPoints.Min(p => p.Price) : currentPrice;
+            decimal periodStartPrice = chartPoints.Any() ? chartPoints.First().Price : currentPrice;
+            decimal periodReturn =
+                periodStartPrice > 0
+                    ? ((currentPrice - periodStartPrice) / periodStartPrice) * 100
+                    : 0;
+
+            decimal high52 = ParseDecimal(yahooSummary, "fiftyTwoWeekHigh");
+            decimal low52 = ParseDecimal(yahooSummary, "fiftyTwoWeekLow");
+            if (high52 == 0)
+                high52 = allPrices.TakeLast(Math.Min(allPrices.Count, 252)).Max(p => p.Close);
+            if (low52 == 0)
+                low52 = allPrices.TakeLast(Math.Min(allPrices.Count, 252)).Min(p => p.Close);
+
             var details = new StockDetails
             {
                 Symbol = ticker,
@@ -152,22 +174,25 @@ namespace PortfolioManager.Api.Services
                 LastUpdate = istNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
                 Ratios = new FundamentalRatios
                 {
-                    CurrentPrice = Math.Round(curPrice, 2),
-                    PriceChange = Math.Round(pChange, 2),
-                    PriceChangePercent = Math.Round(pChangePct, 2),
+                    CurrentPrice = Math.Round(currentPrice, 2),
+                    PriceChange = Math.Round(dailyChange, 2),
+                    PriceChangePercent = Math.Round(dailyPct, 2),
                     MarketCap =
                         fundamentals?.MarketCap != null ? $"{fundamentals.MarketCap} Cr" : "N/A",
-                    High52W = ParseDecimal(yahooSummary, "fiftyTwoWeekHigh"),
-                    Low52W = ParseDecimal(yahooSummary, "fiftyTwoWeekLow"),
-                    HistoricalHigh = Math.Round(allPrices.Max(), 2),
-                    HistoricalLow = Math.Round(allPrices.Min(), 2),
+                    High52W = Math.Round(high52, 2),
+                    Low52W = Math.Round(low52, 2),
+                    HistoricalHigh = Math.Round(allPrices.Max(p => p.Close), 2),
+                    HistoricalLow = Math.Round(allPrices.Min(p => p.Close), 2),
                     StockPE = fundamentals?.StockPE ?? "N/A",
                     ROCE = fundamentals?.ROCE != null ? $"{fundamentals.ROCE}%" : "N/A",
                     ROE = fundamentals?.ROE != null ? $"{fundamentals.ROE}%" : "N/A",
-                    DividendYield = fundamentals?.DividendYield ?? "N/A",
+                    DividendYield = fundamentals?.DividendYield ?? "0.00",
                     FaceValue = fundamentals?.FaceValue ?? "N/A",
                 },
                 ChartData = chartPoints,
+                PeriodHigh = Math.Round(periodHigh, 2),
+                PeriodLow = Math.Round(periodLow, 2),
+                PeriodReturn = Math.Round(periodReturn, 2),
                 QuarterlyResults = fundamentals?.QuarterlyResults ?? new(),
                 ProfitAndLoss = fundamentals?.ProfitAndLoss ?? new(),
                 BalanceSheet = fundamentals?.BalanceSheet ?? new(),
@@ -175,10 +200,7 @@ namespace PortfolioManager.Api.Services
                 Peers = fundamentals?.Peers ?? new(),
             };
 
-            // 8. RUN AUTOMATED TECHNICAL ANALYSIS
-            // This populates the "Strongly Bullish / Bearish" rating and reasons
             details.Analysis = _analysisService.AnalyzeStock(details);
-
             return details;
         }
 
