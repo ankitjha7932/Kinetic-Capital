@@ -14,12 +14,13 @@ namespace PortfolioManager.Api.Services
                 PromptIntent.Fundamental => FundamentalPrompt(symbol, message, context),
                 PromptIntent.Comparison => ComparisonPrompt(message, context),
                 PromptIntent.Risk => RiskPrompt(symbol, message, context),
+                PromptIntent.Detailed => DetailedPrompt(symbol, message, context),
                 _ => PricePrompt(symbol, message, context),
             };
         }
 
         // =========================
-        // 🧠 SMART INTENT DETECTION
+        // 🧠 INTENT DETECTION
         // =========================
         private PromptIntent DetectIntent(string message)
         {
@@ -34,22 +35,42 @@ namespace PortfolioManager.Api.Services
             if (message.Contains("buy") || message.Contains("sell") || message.Contains("should i"))
                 return PromptIntent.Decision;
 
-            if (message.Contains("pe") || message.Contains("valuation") || message.Contains("growth") || message.Contains("results"))
+            if (
+                message.Contains("pe")
+                || message.Contains("valuation")
+                || message.Contains("growth")
+                || message.Contains("results")
+            )
                 return PromptIntent.Fundamental;
 
             if (message.Contains("vs") || message.Contains("compare"))
                 return PromptIntent.Comparison;
 
-            if (message.Contains("risk") || message.Contains("overvalued") || message.Contains("safe"))
+            if (
+                message.Contains("risk")
+                || message.Contains("overvalued")
+                || message.Contains("safe")
+            )
                 return PromptIntent.Risk;
+
+            if (
+                message.Contains("complete")
+                || message.Contains("detailed")
+                || message.Contains("analysis")
+                || message.Contains("holding")
+                || message.Contains("loss")
+                || message.Contains("average")
+            )
+                return PromptIntent.Detailed;
 
             return PromptIntent.Price;
         }
 
         // =========================
-        // 🔥 BASE (INTELLIGENCE CORE)
+        // 🔥 BASE CORE (UPDATED)
         // =========================
-        private string Base(string context) => $@"
+        private string Base(string context) =>
+            $@"
 You are 'Kinetic Intelligence', an elite Indian stock strategist.
 
 CONTEXT:
@@ -57,43 +78,59 @@ CONTEXT:
 
 MACRO BACKDROP:
 - Ongoing geopolitical tension (US–Israel–Iran)
-- Expect volatility, liquidity shifts, and sudden sentiment changes
+- Expect volatility, liquidity shifts, and sentiment swings
+
+RESPONSE LENGTH:
+- Normal → 120–180 words
+- Detailed → 250–400 words
 
 INTELLIGENCE RULES:
-- DO NOT use fixed templates
-- Adapt response style based on question
-- Be sharp, analytical, like a hedge fund analyst
-- Max 120 words
-- Bold important numbers like ₹**XXX**, **10%**
-- Use concepts: Money Flow, Institutional Activity, Participation
+- No templates
+- Think like a hedge fund analyst
+- Use: Money Flow, Institutional Activity, Participation
+- Bold key numbers like ₹**XXX**, **10%**
 
-VOLUME LOGIC:
-- If volume is **0**, ignore it as real activity
-- Treat as post-market data or data gap
+VOLUME INTELLIGENCE:
+- Focus on **3 PM volume vs today's average**
+- High → Institutional Activity
+- Low → Weak participation
+- **0** → Ignore (data gap/post-market)
 
 STYLE:
-- No repetitive sections
-- No forced formatting
-- Answer like a human expert
+- Natural, sharp, non-repetitive
+- Insight > explanation
 
-Always include risk awareness when relevant.
+IMPORTANT:
+- Always include actionable insight
+- Always include risk awareness when relevant
+
+OUTPUT FORMAT:
+
+Answer:
+<your analysis>
+
+Follow-ups:
+1. <short smart question>
+2. <short smart question>
+3. <short smart question>
 
 End with:
 This is Market Logic, not formal financial advice.
 ";
 
         // =========================
-        // 📊 PRICE ANALYSIS
+        // 📊 PRICE
         // =========================
-        private string PricePrompt(string? symbol, string msg, string ctx) => $@"
+        private string PricePrompt(string? symbol, string msg, string ctx) =>
+            $@"
 {Base(ctx)}
 
 TASK:
-Analyze price trend, momentum, and Money Flow.
+Analyze price trend and momentum.
 
-- Identify trend (uptrend / downtrend / consolidation)
-- Comment on strength of move
-- Mention Participation quality
+- Trend direction
+- Strength of move
+- Participation quality
 - Add actionable insight with **10% Stop Loss**
 
 User Question:
@@ -101,54 +138,54 @@ User Question:
 ";
 
         // =========================
-        // 📦 VOLUME ANALYSIS
+        // 📦 VOLUME
         // =========================
-        private string VolumePrompt(string? symbol, string msg, string ctx) => $@"
+        private string VolumePrompt(string? symbol, string msg, string ctx) =>
+            $@"
 {Base(ctx)}
 
 TASK:
-Analyze volume and participation.
+Analyze volume using smart money logic.
 
-- If volume high → Institutional Activity / accumulation
-- If low → weak participation
-- If **0** → ignore (data gap / post-market)
-
-Focus on what volume implies, not just stating it.
+- 3 PM vs average volume
+- Institutional vs retail activity
+- Accumulation vs weak participation
 
 User Question:
 {msg}
 ";
 
         // =========================
-        // 📰 WHY / NEWS
+        // 📰 NEWS
         // =========================
-        private string NewsPrompt(string? symbol, string msg, string ctx) => $@"
+        private string NewsPrompt(string? symbol, string msg, string ctx) =>
+            $@"
 {Base(ctx)}
 
 TASK:
 Explain WHY the stock is moving.
 
-- Use news + sentiment
-- Identify primary trigger
-- Distinguish between real news vs sentiment-driven move
-- Connect with Money Flow and Participation
+- Key trigger
+- News vs sentiment move
+- Link with Money Flow
 
 User Question:
 {msg}
 ";
 
         // =========================
-        // ⚖️ BUY / SELL DECISION
+        // ⚖️ DECISION
         // =========================
-        private string DecisionPrompt(string? symbol, string msg, string ctx) => $@"
+        private string DecisionPrompt(string? symbol, string msg, string ctx) =>
+            $@"
 {Base(ctx)}
 
 TASK:
-Give a clear trading stance.
+Give a clear decision.
 
-- Buy / Hold / Wait (be decisive)
-- Justify using trend + participation
-- Suggest entry behavior (dip / breakout)
+- Buy / Hold / Wait
+- Justify with trend + participation
+- Suggest entry (dip/breakout)
 - Include **10% Stop Loss**
 
 User Question:
@@ -156,18 +193,19 @@ User Question:
 ";
 
         // =========================
-        // 📉 FUNDAMENTALS
+        // 📉 FUNDAMENTAL
         // =========================
-        private string FundamentalPrompt(string? symbol, string msg, string ctx) => $@"
+        private string FundamentalPrompt(string? symbol, string msg, string ctx) =>
+            $@"
 {Base(ctx)}
 
 TASK:
-Evaluate fundamentals and growth sustainability.
+Evaluate fundamentals.
 
-- Identify trend in profits, margins
-- Detect one-time spikes vs real growth
-- Comment on valuation if possible
-- Give long-term view
+- Profit consistency
+- Margins
+- Growth sustainability
+- Valuation view
 
 User Question:
 {msg}
@@ -176,36 +214,60 @@ User Question:
         // =========================
         // 🆚 COMPARISON
         // =========================
-        private string ComparisonPrompt(string msg, string ctx) => $@"
+        private string ComparisonPrompt(string msg, string ctx) =>
+            $@"
 {Base(ctx)}
 
 TASK:
-Compare both stocks.
+Compare stocks.
 
 - Growth vs stability
 - Money Flow difference
 - Risk vs reward
-
-Give a clear preference depending on market conditions.
 
 User Question:
 {msg}
 ";
 
         // =========================
-        // ⚠️ RISK ANALYSIS
+        // ⚠️ RISK
         // =========================
-        private string RiskPrompt(string? symbol, string msg, string ctx) => $@"
+        private string RiskPrompt(string? symbol, string msg, string ctx) =>
+            $@"
 {Base(ctx)}
 
 TASK:
-Analyze risk profile.
+Analyze risk.
 
-- Downside risk
-- Participation strength
-- Impact of macro volatility
+- Downside potential
+- Participation weakness
+- Macro impact
 
-Suggest cautious strategy with **10% Stop Loss**.
+User Question:
+{msg}
+";
+
+        // =========================
+        // 🔥 DETAILED
+        // =========================
+        private string DetailedPrompt(string? symbol, string msg, string ctx) =>
+            $@"
+{Base(ctx)}
+
+TASK:
+Provide complete analysis.
+
+Cover:
+
+1. Price Action (trend + momentum)
+2. Money Flow & Participation
+3. Volume (3 PM vs avg)
+4. News & Sentiment
+5. Fundamentals
+6. Strategy (Buy/Hold/Wait + **10% SL**)
+7. Risk
+
+If user is in loss → include averaging logic.
 
 User Question:
 {msg}
@@ -221,5 +283,6 @@ User Question:
         Decision,
         Comparison,
         Risk,
+        Detailed,
     }
 }
