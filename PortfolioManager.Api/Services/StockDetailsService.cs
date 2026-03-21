@@ -21,15 +21,14 @@ public class StockDetailsService
         string dbSymbol = SanitizeTicker(ticker);
 
         // 1. DATA PADDING STRATEGY
-        // We fetch much more data than we show so the lines (DMA) are pre-calculated
         var (fetchRange, cutoffMode) = range.ToLower() switch
         {
-            "1d" => ("1mo", "today"), // Fetch 1mo for volume avg context
+            "1d" => ("1mo", "today"),
             "1w" => ("1mo", "week"),
             "1m" => ("1y", "month"),
             "3m" => ("2y", "3month"),
             "6m" => ("2y", "6month"),
-            "1y" => ("3y", "year"), // Fetch 3y to show a perfect 200 DMA for a 1y chart
+            "1y" => ("3y", "year"), // Fetch 3y to show a perfect 200 DMA and accurate Historical High
             "3y" => ("5y", "3year"),
             _ => ("max", "max"),
         };
@@ -53,8 +52,6 @@ public class StockDetailsService
         // 3. CALCULATE ALL DATA POINTS
         var allPrices = history.Prices.Select(p => p.Close).ToList();
         var allVolumes = history.Prices.Select(p => (double)p.Volume).ToList();
-
-        // Calculate a 20-period volume average for the "Cash Flood" detection
         double avgVol =
             allVolumes.Count > 20 ? allVolumes.TakeLast(20).Average() : allVolumes.Average();
 
@@ -73,7 +70,7 @@ public class StockDetailsService
             _ => DateTime.MinValue,
         };
 
-        // 5. MAP & CALCULATE DMA (Using the full 'allPrices' list)
+        // 5. MAP & CALCULATE DMA
         var chartPoints = history
             .Prices.Select(
                 (p, i) =>
@@ -82,8 +79,6 @@ public class StockDetailsService
                         Date = p.Date,
                         Price = Math.Round(p.Close, 2),
                         Volume = p.Volume,
-                        // These will now have values even at the start of the visible chart
-                        // because 'i' starts from the beginning of the 3-year fetch
                         DmA50 =
                             i < 49
                                 ? null
@@ -97,10 +92,10 @@ public class StockDetailsService
                         IsVolumeSpike = avgVol > 0 && (double)p.Volume > (avgVol * 2),
                     }
             )
-            .Where(d => d.Date >= cutoffDate) // <-- THIS is where we filter for the UI
+            .Where(d => d.Date >= cutoffDate)
             .ToList();
 
-        // 6. ASSEMBLE RESULT
+        // 6. ASSEMBLE RESULT WITH MISSING VALUES FIXED
         return new StockDetails
         {
             Symbol = ticker,
@@ -111,16 +106,20 @@ public class StockDetailsService
                 MarketCap =
                     fundamentals?.MarketCap != null ? $"{fundamentals.MarketCap} Cr" : "N/A",
 
-                // Waterfall for 52W stats (Summary API -> History fallback)
+                // 52W stats from Yahoo Summary
                 High52W =
                     Math.Round(ParseDecimal(yahooSummary, "fiftyTwoWeekHigh"), 2) != 0
                         ? Math.Round(ParseDecimal(yahooSummary, "fiftyTwoWeekHigh"), 2)
-                        : Math.Round(allPrices.Max(), 2),
+                        : Math.Round(allPrices.TakeLast(Math.Min(allPrices.Count, 252)).Max(), 2),
 
                 Low52W =
                     Math.Round(ParseDecimal(yahooSummary, "fiftyTwoWeekLow"), 2) != 0
                         ? Math.Round(ParseDecimal(yahooSummary, "fiftyTwoWeekLow"), 2)
-                        : Math.Round(allPrices.Min(), 2),
+                        : Math.Round(allPrices.TakeLast(Math.Min(allPrices.Count, 252)).Min(), 2),
+
+                // FIXED: Historical High & Low from the full 3-year fetch
+                HistoricalHigh = Math.Round(allPrices.Max(), 2),
+                HistoricalLow = Math.Round(allPrices.Min(), 2),
 
                 FaceValue = fundamentals?.FaceValue ?? "N/A",
                 StockPE = fundamentals?.StockPE ?? "N/A",
