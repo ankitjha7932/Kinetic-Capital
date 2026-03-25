@@ -47,9 +47,6 @@ namespace PortfolioManager.Api.Controllers
 
             try
             {
-                // =========================
-                // 📊 MARKET DATA
-                // =========================
                 if (!string.IsNullOrEmpty(req.Symbol))
                 {
                     var history = await _priceService.GetHistoricalDataAsync(req.Symbol, "1d");

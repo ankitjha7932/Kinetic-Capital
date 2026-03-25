@@ -48,7 +48,7 @@ public class PortfolioController : ControllerBase
                 if (livePrice <= 0)
                     livePrice = h.AvgBuyPrice;
 
-                // Fetch from StockFundamental collection
+                // Fetch frm StockFundmental COllection
                 var fundamental = await _db.Stocks.FirstOrDefaultAsync(s => s.Symbol == h.Symbol);
 
                 double mCapValue = 0;
