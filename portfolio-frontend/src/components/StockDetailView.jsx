@@ -290,10 +290,18 @@ export default function StockDetailView() {
                   rel="noopener noreferrer"
                   className="group block p-4 hover:bg-slate-50 transition-all"
                 >
-                  <span className="text-[9px] font-black text-indigo-600 uppercase">
-                    {item.source}
-                  </span>
-                  <h4 className="text-[12px] font-bold text-slate-700 leading-snug group-hover:text-indigo-600 line-clamp-2 mt-1">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[9px] font-black text-indigo-600 uppercase">
+                      {item.source}
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-400">
+                      {new Date(item.publishedAt).toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                      })}
+                    </span>
+                  </div>
+                  <h4 className="text-[12px] font-bold text-slate-700 leading-snug group-hover:text-indigo-600 line-clamp-2">
                     {item.title}
                   </h4>
                 </a>
@@ -527,23 +535,33 @@ export default function StockDetailView() {
 
       {/* FINANCIALS */}
       <div className="space-y-8 pt-10">
-        <div className="flex flex-wrap bg-white p-2 rounded-2xl shadow-sm border border-slate-100 gap-2 w-fit">
-          {[
-            { id: "quarters", label: "Quarterly Results" },
-            { id: "pl", label: "Profit & Loss" },
-            { id: "balance", label: "Balance Sheet" },
-            { id: "cash", label: "Cash Flow" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => toggleTable(tab.id)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 border border-transparent"}`}
-            >
-              {visibleTables[tab.id] ? <Eye size={14} /> : <EyeOff size={14} />}{" "}
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap bg-white p-2 rounded-2xl shadow-sm border border-slate-100 gap-2 w-fit">
+            {[
+              { id: "quarters", label: "Quarterly Results" },
+              { id: "pl", label: "Profit & Loss" },
+              { id: "balance", label: "Balance Sheet" },
+              { id: "cash", label: "Cash Flow" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => toggleTable(tab.id)}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 border border-transparent"}`}
+              >
+                {visibleTables[tab.id] ? (
+                  <Eye size={14} />
+                ) : (
+                  <EyeOff size={14} />
+                )}{" "}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">
+            * All values are in ₹ Crores
+          </p>
         </div>
+
         <div className="space-y-16">
           {visibleTables.quarters && (
             <FinancialTable
