@@ -69,6 +69,8 @@ namespace PortfolioManager.Api.Services
             };
 
             var allPrices = history.Prices.OrderBy(p => p.Date).ToList();
+
+            // Generate Chart Points
             var chartPoints = allPrices
                 .Select(
                     (p, i) =>
@@ -120,10 +122,12 @@ namespace PortfolioManager.Api.Services
                     .ToList();
             }
 
+            // --- FIXED LOGIC: HEADER PERFORMANCE (CONSISTENT DAILY CHANGE) ---
             decimal currentPrice = allPrices.Last().Close;
             decimal dailyChange = 0;
             decimal dailyPct = 0;
 
+            // 1. Try to get real-time Daily metrics from Yahoo Summary module first
             if (yahooSummary.HasValue)
             {
                 try
@@ -143,20 +147,28 @@ namespace PortfolioManager.Api.Services
                 catch { }
             }
 
-            if (dailyChange == 0 && allPrices.Count > 1)
+            // 2. Logic Fix: Find the actual Previous Session Close (Not just the previous minute)
+            if (dailyChange == 0)
             {
-                decimal lastClose = allPrices.Last().Close;
-                decimal prevClose =
-                    allPrices.Count > 1 ? allPrices[allPrices.Count - 2].Close : lastClose;
-                dailyChange = lastClose - prevClose;
-                dailyPct = prevClose != 0 ? (dailyChange / prevClose) * 100 : 0;
+                var latestPoint = allPrices.Last();
+                var todayDate = latestPoint.Date.Date;
+
+                // Find the last point from the session BEFORE today
+                var prevSessionPoint = allPrices.LastOrDefault(p => p.Date.Date < todayDate);
+
+                // If no previous session (e.g. IPO), use the first available point
+                decimal referencePrevClose = prevSessionPoint?.Close ?? allPrices.First().Close;
+
+                dailyChange = currentPrice - referencePrevClose;
+                dailyPct = referencePrevClose != 0 ? (dailyChange / referencePrevClose) * 100 : 0;
             }
 
+            // --- DYNAMIC LOGIC: PERIOD PERFORMANCE (FOR STATS CARDS) ---
             decimal periodHigh = chartPoints.Any() ? chartPoints.Max(p => p.Price) : currentPrice;
             decimal periodLow = chartPoints.Any() ? chartPoints.Min(p => p.Price) : currentPrice;
             decimal periodStartPrice = chartPoints.Any() ? chartPoints.First().Price : currentPrice;
             decimal periodReturn =
-                periodStartPrice > 0
+                (periodStartPrice > 0)
                     ? ((currentPrice - periodStartPrice) / periodStartPrice) * 100
                     : 0;
 
@@ -167,7 +179,7 @@ namespace PortfolioManager.Api.Services
             if (low52 == 0)
                 low52 = allPrices.TakeLast(Math.Min(allPrices.Count, 252)).Min(p => p.Close);
 
-            var details = new StockDetails
+            return new StockDetails
             {
                 Symbol = ticker,
                 Industry = fundamentals?.Industry ?? "N/A",
@@ -175,8 +187,8 @@ namespace PortfolioManager.Api.Services
                 Ratios = new FundamentalRatios
                 {
                     CurrentPrice = Math.Round(currentPrice, 2),
-                    PriceChange = Math.Round(dailyChange, 2),
-                    PriceChangePercent = Math.Round(dailyPct, 2),
+                    PriceChange = Math.Round(dailyChange, 2), // Now strictly Daily
+                    PriceChangePercent = Math.Round(dailyPct, 2), // Now strictly Daily
                     MarketCap =
                         fundamentals?.MarketCap != null ? $"{fundamentals.MarketCap} Cr" : "N/A",
                     High52W = Math.Round(high52, 2),
@@ -199,9 +211,6 @@ namespace PortfolioManager.Api.Services
                 CashFlow = fundamentals?.CashFlow ?? new(),
                 Peers = fundamentals?.Peers ?? new(),
             };
-
-            details.Analysis = _analysisService.AnalyzeStock(details);
-            return details;
         }
 
         private decimal ParseDecimal(JsonElement? summary, string prop)
@@ -219,6 +228,9 @@ namespace PortfolioManager.Api.Services
             }
         }
 
-        private string SanitizeTicker(string s) => s.ToUpper().EndsWith(".NS") ? s : $"{s}.NS";
+        private string SanitizeTicker(string s) =>
+            s.ToUpper().EndsWith(".NS") || s.ToUpper().EndsWith(".BO")
+                ? s.ToUpper()
+                : $"{s.ToUpper()}.NS";
     }
 }

@@ -15,7 +15,7 @@ public class AuthController : ControllerBase
     [HttpPost("send-otp")]
     public async Task<IActionResult> SendOtp([FromBody] SendOtpRequest req)
     {
-        // Pass 'true' if the flow is registration
+        // Pass 'true' if register hai to 
         bool isReg = req.Flow?.ToLower() == "register";
 
         var res = await _auth.SendOtpAsync(req.Email, isReg);

@@ -100,7 +100,6 @@ namespace PortfolioManager.Api.Controllers
                 ? symbol.ToUpper()
                 : $"{symbol.ToUpper()}.NS";
 
-            // FIX: Removed the 3rd parameter 'faceValueFromCsv' as the service signature now only takes 2 arguments
             var details = await _detailsService.GetStockDetailsAsync(ticker, range);
 
             if (details == null)
@@ -116,7 +115,6 @@ namespace PortfolioManager.Api.Controllers
                 ? symbol.ToUpper()
                 : $"{symbol.ToUpper()}.NS";
 
-            // FIX: Removed the 3rd parameter '"N/A"' to match the updated service signature
             var resultObj = await _detailsService.GetStockDetailsAsync(ticker, "1y");
 
             if (resultObj == null)

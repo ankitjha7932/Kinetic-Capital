@@ -20,7 +20,6 @@ public class NewsService
 
     public async Task<List<NewsArticle>> GetStockNewsAsync(string symbol)
     {
-        // Check Cache first 
         string cacheKey = $"News_{symbol}";
         if (_cache.TryGetValue(cacheKey, out List<NewsArticle>? cachedNews))
         {
@@ -34,7 +33,6 @@ public class NewsService
             string query = Uri.EscapeDataString($"{cleanSymbol} stock news India");
             string url = $"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en";
 
-            // GetStreamAsync good for XML/RSS
             var response = await _httpClient.GetStreamAsync(url);
 
             using var xmlReader = XmlReader.Create(response);
@@ -42,7 +40,6 @@ public class NewsService
 
             foreach (var item in feed.Items.OrderByDescending(i => i.PublishDate).Take(8))
             {
-                // Google RSS Titles are usually "Headline - Publisher"
                 string fullTitle = item.Title.Text;
                 string source = "Google News";
                 string cleanTitle = fullTitle;
@@ -66,7 +63,7 @@ public class NewsService
                 );
             }
 
-            // Store in cache for 30 mins to avoid hitting Google too hard
+            // Store in cache for 30 mins avod hiting Google so frequenyly
             _cache.Set(cacheKey, articles, TimeSpan.FromMinutes(30));
         }
         catch (Exception ex)
