@@ -19,6 +19,15 @@ namespace PortfolioManager.Api.Models
         public decimal PeriodHigh { get; set; }
         public decimal PeriodLow { get; set; }
         public decimal PeriodReturn { get; set; }
+        public List<NewsItem> News { get; set; } = new();
+        public List<ShareholdingData> Shareholding { get; set; } = new();
+    }
+
+    public class NewsItem
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Source { get; set; } = string.Empty;
+        public DateTime PublishedAt { get; set; }
     }
 
     public class ChartDataPoint

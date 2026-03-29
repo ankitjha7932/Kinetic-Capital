@@ -136,6 +136,37 @@ namespace PortfolioManager.Api.Controllers
                 return StatusCode(500, new { error = "Analysis failed", details = ex.Message });
             }
         }
+
+        [HttpGet("{symbol}/shareholding")]
+        public async Task<IActionResult> GetShareholdingData(string symbol)
+        {
+            var stock = await _detailsService.GetStockDetailsAsync(symbol);
+            if (stock == null || stock.Shareholding == null)
+                return NotFound();
+
+            var quarters = stock.Shareholding.First().Values.Keys.ToList();
+
+            // 2. Format for Pie Chart (Latest Quarter Only)
+            var latestQuarter = quarters.Last();
+            var pieData = stock
+                .Shareholding.Where(s => !s.Category.Contains("Shareholders")) // Filter out 'No. of Shareholders'
+                .Select(s => new
+                {
+                    name = s.Category,
+                    value = double.TryParse(s.Values[latestQuarter], out var v) ? v : 0,
+                })
+                .ToList();
+
+            return Ok(
+                new
+                {
+                    Quarters = quarters,
+                    History = stock.Shareholding, // Full data for table
+                    PieData = pieData,
+                    LatestQuarterName = latestQuarter,
+                }
+            );
+        }
     }
 
     public record StockMaster(string Symbol, string Name, string Sector, string FaceValue);
