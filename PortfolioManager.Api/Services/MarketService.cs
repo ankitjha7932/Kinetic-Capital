@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.Extensions.Caching.Memory;
 using MongoDB.Driver;
 using PortfolioManager.Api.Models;
@@ -11,6 +12,22 @@ public class MarketService
     private readonly IMemoryCache _cache;
     private const string CacheKey = "MarketVolumeInfusion";
 
+    // 1. ADDED FOR TICKER
+    public const string TickerCacheKey = "MarketTickerData";
+    private readonly string[] _tickerSymbols =
+    {
+        "BAJFINANCE.NS",
+        "BHARTIARTL.NS",
+        "HDFCBANK.NS",
+        "HINDUNILVR.NS",
+        "INDIGO.NS",
+        "ITC.NS",
+        "MARUTI.NS",
+        "RELIANCE.NS",
+        "SBIN.NS",
+        "TCS.NS",
+    };
+
     public MarketService(
         StockPriceService priceService,
         IMongoDatabase database,
@@ -20,6 +37,53 @@ public class MarketService
         _priceService = priceService;
         _fundamentalCollection = database.GetCollection<StockFundamental>("StocksDeepData");
         _cache = cache;
+    }
+
+    // 2. ADDED FOR TICKER: Getter for the Controller
+    public async Task<List<MarketMomentum>> GetTickerDataAsync()
+    {
+        return _cache.Get<List<MarketMomentum>>(TickerCacheKey) ?? new List<MarketMomentum>();
+    }
+
+    // 3. ADDED FOR TICKER: Refresher for the Background Worker
+    public async Task RefreshTickerBatchAsync()
+    {
+        var results = new List<MarketMomentum>();
+        foreach (var symbol in _tickerSymbols)
+        {
+            try
+            {
+                var history = await _priceService.GetHistoricalDataAsync(symbol, "5d");
+                if (history?.Prices?.Count < 2)
+                    continue;
+
+                var latest = history.Prices.Last();
+                var prev = history.Prices[history.Prices.Count - 2];
+
+                decimal price = latest.Close;
+                decimal change = ((price - prev.Close) / (prev.Close != 0 ? prev.Close : 1)) * 100;
+
+                results.Add(
+                    new MarketMomentum(
+                        symbol.Replace(".NS", ""),
+                        Math.Round(price, 2),
+                        latest.Volume,
+                        0,
+                        0,
+                        0, // Unused fields for ticker
+                        Math.Round(change, 2)
+                    )
+                );
+            }
+            catch { }
+        }
+
+        if (results.Any())
+            _cache.Set(
+                TickerCacheKey,
+                results.OrderBy(r => r.Symbol).ToList(),
+                TimeSpan.FromHours(24)
+            );
     }
 
     public async Task<List<MarketMomentum>> GetHighInfusionStocksAsync()
@@ -103,7 +167,7 @@ public class MarketService
         var finalResult = results.OrderByDescending(r => r.HandoverRatio).Take(30).ToList();
 
         if (finalResult.Any())
-            _cache.Set(CacheKey, finalResult, TimeSpan.FromHours(1)); 
+            _cache.Set(CacheKey, finalResult, TimeSpan.FromHours(1));
 
         return finalResult;
     }

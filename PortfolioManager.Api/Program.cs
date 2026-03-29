@@ -68,6 +68,7 @@ builder.Services.AddControllers();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IPromptService, PromptService>();
 builder.Services.AddScoped<IStockAnalysisService, StockAnalysisService>();
+builder.Services.AddHostedService<MarketScannerWorker>();
 
 builder
     .Services.AddHttpClient<StockPriceService>()
