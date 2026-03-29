@@ -32,6 +32,7 @@ public class StockFundamental
     public List<FinancialRow> BalanceSheet { get; set; } = new();
     public List<FinancialRow> CashFlow { get; set; } = new();
     public List<PeerData> Peers { get; set; } = new();
+    public List<ShareholdingData> Shareholding { get; set; }
 }
 
 public class PeerData
@@ -41,4 +42,10 @@ public class PeerData
     public string PE { get; set; } = null!;
     public string MarketCap { get; set; } = null!;
     public string ROCE { get; set; } = null!;
+}
+
+public class ShareholdingData
+{
+    public string Category { get; set; } // e.g., "Promoters"
+    public Dictionary<string, string> Values { get; set; } // Key: "Dec 2025", Value: "14.57"
 }
