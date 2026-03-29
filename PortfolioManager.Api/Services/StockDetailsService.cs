@@ -10,6 +10,8 @@ namespace PortfolioManager.Api.Services
         private readonly IMongoCollection<StockFundamental> _fundamentalCollection;
         private readonly IStockAnalysisService _analysisService;
 
+        private static readonly Dictionary<string, string> _faceValueCache = new();
+
         public StockDetailsService(
             StockPriceService priceService,
             IMongoDatabase database,
@@ -19,12 +21,38 @@ namespace PortfolioManager.Api.Services
             _priceService = priceService;
             _fundamentalCollection = database.GetCollection<StockFundamental>("StocksDeepData");
             _analysisService = analysisService;
+
+            string fileName = Path.Combine("Data", "EQUITY_L.csv");
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName);
+            
+            if (!File.Exists(path)) 
+                path = Path.Combine(Directory.GetCurrentDirectory(), fileName);
+
+            if (!_faceValueCache.Any() && File.Exists(path))
+            {
+                try
+                {
+                    var lines = File.ReadAllLines(path).Skip(1);
+                    foreach (var line in lines)
+                    {
+                        var parts = line.Split(',');
+                        if (parts.Length >= 8)
+                        {
+                            string symbolKey = parts[0].Trim().ToUpper().Replace("\"", "");
+                            string faceVal = parts[7].Trim().Replace("\"", "");
+                            _faceValueCache[symbolKey] = faceVal;
+                        }
+                    }
+                }
+                catch { }
+            }
         }
 
         public async Task<StockDetails?> GetStockDetailsAsync(string symbol, string range = "1d")
         {
             string ticker = symbol.ToUpper();
             string dbSymbol = SanitizeTicker(ticker);
+            string rawSymbol = ticker.Split('.')[0]; // ITC from ITC.NS
 
             var (fetchRange, cutoffMode) = range.ToLower() switch
             {
@@ -39,9 +67,7 @@ namespace PortfolioManager.Api.Services
             };
 
             var historyTask = _priceService.GetHistoricalDataAsync(dbSymbol, fetchRange);
-            var mongoTask = _fundamentalCollection
-                .Find(f => f.Symbol == dbSymbol)
-                .FirstOrDefaultAsync();
+            var mongoTask = _fundamentalCollection.Find(f => f.Symbol == dbSymbol).FirstOrDefaultAsync();
             var summaryTask = _priceService.GetStockFundamentalsAsync(dbSymbol);
 
             await Task.WhenAll(historyTask, mongoTask, summaryTask);
@@ -50,8 +76,7 @@ namespace PortfolioManager.Api.Services
             var fundamentals = await mongoTask;
             var yahooSummary = await summaryTask;
 
-            if (history == null || !history.Prices.Any())
-                return null;
+            if (history == null || !history.Prices.Any()) return null;
 
             TimeZoneInfo istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
             DateTime istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, istZone);
@@ -70,114 +95,59 @@ namespace PortfolioManager.Api.Services
 
             var allPrices = history.Prices.OrderBy(p => p.Date).ToList();
 
-            // Generate Chart Points
             var chartPoints = allPrices
-                .Select(
-                    (p, i) =>
-                        new ChartDataPoint
-                        {
-                            Date = p.Date,
-                            Price = Math.Round(p.Close, 2),
-                            Volume = p.Volume,
-                            DmA50 =
-                                i < 49
-                                    ? null
-                                    : (decimal?)
-                                        Math.Round(
-                                            allPrices
-                                                .Skip(i - 49)
-                                                .Take(50)
-                                                .Select(x => x.Close)
-                                                .Average(),
-                                            2
-                                        ),
-                            DmA200 =
-                                i < 199
-                                    ? null
-                                    : (decimal?)
-                                        Math.Round(
-                                            allPrices
-                                                .Skip(i - 199)
-                                                .Take(200)
-                                                .Select(x => x.Close)
-                                                .Average(),
-                                            2
-                                        ),
-                        }
-                )
+                .Select((p, i) => new ChartDataPoint
+                {
+                    Date = p.Date,
+                    Price = Math.Round(p.Close, 2),
+                    Volume = p.Volume,
+                    DmA50 = i < 49 ? null : (decimal?)Math.Round(allPrices.Skip(i - 49).Take(50).Select(x => x.Close).Average(), 2),
+                    DmA200 = i < 199 ? null : (decimal?)Math.Round(allPrices.Skip(i - 199).Take(200).Select(x => x.Close).Average(), 2),
+                })
                 .Where(d => d.Date >= cutoffDate)
                 .ToList();
 
             if (cutoffMode == "today" && chartPoints.Count < 5)
             {
                 var lastActiveDate = allPrices.Last().Date.Date;
-                chartPoints = allPrices
-                    .Where(p => p.Date.Date == lastActiveDate)
-                    .Select(p => new ChartDataPoint
-                    {
-                        Date = p.Date,
-                        Price = Math.Round(p.Close, 2),
-                        Volume = p.Volume,
-                    })
-                    .ToList();
+                chartPoints = allPrices.Where(p => p.Date.Date == lastActiveDate)
+                    .Select(p => new ChartDataPoint { Date = p.Date, Price = Math.Round(p.Close, 2), Volume = p.Volume }).ToList();
             }
 
-            // --- FIXED LOGIC: HEADER PERFORMANCE (CONSISTENT DAILY CHANGE) ---
             decimal currentPrice = allPrices.Last().Close;
             decimal dailyChange = 0;
             decimal dailyPct = 0;
 
-            // 1. Try to get real-time Daily metrics from Yahoo Summary module first
             if (yahooSummary.HasValue)
             {
                 try
                 {
                     var pObj = yahooSummary.Value.GetProperty("price");
-                    currentPrice = pObj.GetProperty("regularMarketPrice")
-                        .GetProperty("raw")
-                        .GetDecimal();
-                    dailyChange = pObj.GetProperty("regularMarketChange")
-                        .GetProperty("raw")
-                        .GetDecimal();
-                    dailyPct =
-                        pObj.GetProperty("regularMarketChangePercent")
-                            .GetProperty("raw")
-                            .GetDecimal() * 100;
+                    currentPrice = pObj.GetProperty("regularMarketPrice").GetProperty("raw").GetDecimal();
+                    dailyChange = pObj.GetProperty("regularMarketChange").GetProperty("raw").GetDecimal();
+                    dailyPct = pObj.GetProperty("regularMarketChangePercent").GetProperty("raw").GetDecimal() * 100;
                 }
                 catch { }
             }
 
-            // 2. Logic Fix: Find the actual Previous Session Close (Not just the previous minute)
             if (dailyChange == 0)
             {
                 var latestPoint = allPrices.Last();
-                var todayDate = latestPoint.Date.Date;
-
-                // Find the last point from the session BEFORE today
-                var prevSessionPoint = allPrices.LastOrDefault(p => p.Date.Date < todayDate);
-
-                // If no previous session (e.g. IPO), use the first available point
+                var prevSessionPoint = allPrices.LastOrDefault(p => p.Date.Date < latestPoint.Date.Date);
                 decimal referencePrevClose = prevSessionPoint?.Close ?? allPrices.First().Close;
-
                 dailyChange = currentPrice - referencePrevClose;
                 dailyPct = referencePrevClose != 0 ? (dailyChange / referencePrevClose) * 100 : 0;
             }
 
-            // --- DYNAMIC LOGIC: PERIOD PERFORMANCE (FOR STATS CARDS) ---
             decimal periodHigh = chartPoints.Any() ? chartPoints.Max(p => p.Price) : currentPrice;
             decimal periodLow = chartPoints.Any() ? chartPoints.Min(p => p.Price) : currentPrice;
             decimal periodStartPrice = chartPoints.Any() ? chartPoints.First().Price : currentPrice;
-            decimal periodReturn =
-                (periodStartPrice > 0)
-                    ? ((currentPrice - periodStartPrice) / periodStartPrice) * 100
-                    : 0;
+            decimal periodReturn = (periodStartPrice > 0) ? ((currentPrice - periodStartPrice) / periodStartPrice) * 100 : 0;
 
             decimal high52 = ParseDecimal(yahooSummary, "fiftyTwoWeekHigh");
             decimal low52 = ParseDecimal(yahooSummary, "fiftyTwoWeekLow");
-            if (high52 == 0)
-                high52 = allPrices.TakeLast(Math.Min(allPrices.Count, 252)).Max(p => p.Close);
-            if (low52 == 0)
-                low52 = allPrices.TakeLast(Math.Min(allPrices.Count, 252)).Min(p => p.Close);
+            if (high52 == 0) high52 = allPrices.TakeLast(Math.Min(allPrices.Count, 252)).Max(p => p.Close);
+            if (low52 == 0) low52 = allPrices.TakeLast(Math.Min(allPrices.Count, 252)).Min(p => p.Close);
 
             return new StockDetails
             {
@@ -187,10 +157,9 @@ namespace PortfolioManager.Api.Services
                 Ratios = new FundamentalRatios
                 {
                     CurrentPrice = Math.Round(currentPrice, 2),
-                    PriceChange = Math.Round(dailyChange, 2), // Now strictly Daily
-                    PriceChangePercent = Math.Round(dailyPct, 2), // Now strictly Daily
-                    MarketCap =
-                        fundamentals?.MarketCap != null ? $"{fundamentals.MarketCap} Cr" : "N/A",
+                    PriceChange = Math.Round(dailyChange, 2),
+                    PriceChangePercent = Math.Round(dailyPct, 2),
+                    MarketCap = fundamentals?.MarketCap != null ? $"{fundamentals.MarketCap} Cr" : "N/A",
                     High52W = Math.Round(high52, 2),
                     Low52W = Math.Round(low52, 2),
                     HistoricalHigh = Math.Round(allPrices.Max(p => p.Close), 2),
@@ -199,7 +168,7 @@ namespace PortfolioManager.Api.Services
                     ROCE = fundamentals?.ROCE != null ? $"{fundamentals.ROCE}%" : "N/A",
                     ROE = fundamentals?.ROE != null ? $"{fundamentals.ROE}%" : "N/A",
                     DividendYield = fundamentals?.DividendYield ?? "0.00",
-                    FaceValue = fundamentals?.FaceValue ?? "N/A",
+                    FaceValue = _faceValueCache.GetValueOrDefault(rawSymbol) ?? fundamentals?.FaceValue ?? "N/A",
                 },
                 ChartData = chartPoints,
                 PeriodHigh = Math.Round(periodHigh, 2),
@@ -215,22 +184,16 @@ namespace PortfolioManager.Api.Services
 
         private decimal ParseDecimal(JsonElement? summary, string prop)
         {
-            if (!summary.HasValue)
-                return 0;
+            if (!summary.HasValue) return 0;
             try
             {
                 var sd = summary.Value.GetProperty("summaryDetail");
                 return sd.GetProperty(prop).GetProperty("raw").GetDecimal();
             }
-            catch
-            {
-                return 0;
-            }
+            catch { return 0; }
         }
 
         private string SanitizeTicker(string s) =>
-            s.ToUpper().EndsWith(".NS") || s.ToUpper().EndsWith(".BO")
-                ? s.ToUpper()
-                : $"{s.ToUpper()}.NS";
+            s.ToUpper().EndsWith(".NS") || s.ToUpper().EndsWith(".BO") ? s.ToUpper() : $"{s.ToUpper()}.NS";
     }
 }
