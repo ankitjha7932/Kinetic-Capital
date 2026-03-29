@@ -18,7 +18,6 @@ import {
   TrendingDown,
   Newspaper,
   Zap,
-  Info,
   X,
   CheckCircle2,
   AlertCircle,
@@ -30,6 +29,7 @@ import {
 } from "lucide-react";
 import api from "../api/axios";
 import FinancialTable from "./FinancialTable";
+import ShareholdingSection from "./ShareHoldingSection"; 
 
 export default function StockDetailView() {
   const { symbol } = useParams();
@@ -37,11 +37,12 @@ export default function StockDetailView() {
 
   const [data, setData] = useState(null);
   const [analysis, setAnalysis] = useState(null);
-  const [news, setNews] = useState([]);
+  const [shareholding, setShareholding] = useState(null);
   const [loading, setLoading] = useState(true);
   const [newsLoading, setNewsLoading] = useState(true);
+  const [shLoading, setShLoading] = useState(true);
+  const [news, setNews] = useState([]);
   const [range, setRange] = useState("1d");
-
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
 
   const [visibleTables, setVisibleTables] = useState({
@@ -55,24 +56,72 @@ export default function StockDetailView() {
   const [showDMA200, setShowDMA200] = useState(false);
   const [showVolumeAlways, setShowVolumeAlways] = useState(true);
 
+  const getSentimentConfig = (score) => {
+    if (score >= 80)
+      return {
+        bg: "bg-emerald-600",
+        text: "text-emerald-600",
+        light: "bg-emerald-50",
+        border: "border-emerald-200",
+        icon: <TrendingUp size={16} />,
+      };
+    if (score >= 65)
+      return {
+        bg: "bg-emerald-400",
+        text: "text-emerald-500",
+        light: "bg-emerald-50/50",
+        border: "border-emerald-100",
+        icon: <TrendingUp size={16} />,
+      };
+    if (score >= 45)
+      return {
+        bg: "bg-amber-500",
+        text: "text-amber-600",
+        light: "bg-amber-50",
+        border: "border-amber-200",
+        icon: <Activity size={16} />,
+      };
+    if (score >= 25)
+      return {
+        bg: "bg-rose-400",
+        text: "text-rose-500",
+        light: "bg-rose-50/50",
+        border: "border-rose-100",
+        icon: <TrendingDown size={16} />,
+      };
+    return {
+      bg: "bg-rose-700",
+      text: "text-rose-700",
+      light: "bg-rose-50",
+      border: "border-rose-200",
+      icon: <AlertCircle size={16} />,
+    };
+  };
+
+  const sentiment = getSentimentConfig(analysis?.score || 0);
+
   useEffect(() => {
     if (!symbol || symbol === "undefined") return;
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [analRes, newsRes, detRes] = await Promise.all([
+        setShLoading(true); // Reset loading state
+        const [analRes, newsRes, detRes, shRes] = await Promise.all([
           api.get(`/stocks/analyze/${symbol}`),
           api.get(`/portfolio/news/${symbol}`),
           api.get(`/stocks/details/${symbol}?range=${range}`),
+          api.get(`/stocks/${symbol}/shareholding`),
         ]);
         setAnalysis(analRes.data);
         setNews(newsRes.data.slice(0, 7));
         setData(detRes.data);
+        setShareholding(shRes.data);
       } catch (err) {
         console.error("Fetch error:", err);
       } finally {
         setLoading(false);
         setNewsLoading(false);
+        setShLoading(false); // Stop loading
       }
     };
     fetchData();
@@ -98,7 +147,13 @@ export default function StockDetailView() {
 
   const isUp = data?.ratios?.priceChange >= 0;
   const isPeriodPositive = data?.periodReturn >= 0;
-  const themeColor = isUp ? "#10b981" : "#f43f5e";
+  const themeColor = sentiment.text
+    .replace("text-", "#")
+    .replace("emerald-600", "059669")
+    .replace("emerald-500", "10b981")
+    .replace("amber-600", "d97706")
+    .replace("rose-500", "f43f5e")
+    .replace("rose-700", "be123c");
 
   const renderDateTick = (tickItem) => {
     const date = new Date(tickItem);
@@ -127,66 +182,82 @@ export default function StockDetailView() {
     );
 
   return (
-    <div className="max-w-7xl mx-auto p-4 space-y-6 bg-slate-50 min-h-screen font-sans relative">
+    <div className="max-w-7xl mx-auto p-4 space-y-6 bg-slate-50 min-h-screen font-sans relative pb-20">
       {/* --- ANALYSIS MODAL --- */}
       {isAnalysisModalOpen && analysis && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
             onClick={() => setIsAnalysisModalOpen(false)}
           />
           <div className="relative bg-white w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden border border-slate-100">
-            <div
-              className={`h-2 w-full ${analysis.score >= 1 ? "bg-emerald-500" : "bg-rose-500"}`}
-            />
+            <div className={`h-2.5 w-full ${sentiment.bg}`} />
             <div className="p-8">
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
                     Intelligence Core
                   </p>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <h2
+                    className={`text-2xl font-black tracking-tight flex items-center gap-2 ${sentiment.text}`}
+                  >
                     {analysis.sentiment}
-                    <span className="text-xs px-2 py-0.5 bg-slate-100 rounded-lg text-slate-500">
-                      Score: {analysis.score}
-                    </span>
                   </h2>
                 </div>
                 <button
                   onClick={() => setIsAnalysisModalOpen(false)}
-                  className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"
+                  className="p-2 hover:bg-slate-100 rounded-full text-slate-400"
                 >
                   <X size={20} />
                 </button>
               </div>
+              <div className="mb-8 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                <div className="flex justify-between items-end mb-2">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">
+                    Confidence Index
+                  </span>
+                  <span className={`text-2xl font-black ${sentiment.text}`}>
+                    {analysis.score}%
+                  </span>
+                </div>
+                <div className="h-2 w-full bg-white rounded-full overflow-hidden border border-slate-200/50">
+                  <div
+                    className={`h-full transition-all duration-1000 ${sentiment.bg}`}
+                    style={{ width: `${analysis.score}%` }}
+                  />
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3 mb-8">
                 {Object.entries(analysis.performanceMatrix || {}).map(
-                  ([key, val]) => (
-                    <div
-                      key={key}
-                      className="bg-slate-50 p-4 rounded-2xl border border-slate-100/50"
-                    >
-                      <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">
-                        {key}
-                      </p>
-                      <p className="text-sm font-black text-slate-800 tracking-tight">
-                        {val}
-                      </p>
-                    </div>
-                  ),
+                  ([key, val]) => {
+                    if (key === "Handover" || key === "Absorption") return null;
+                    return (
+                      <div
+                        key={key}
+                        className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm"
+                      >
+                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">
+                          {key}
+                        </p>
+                        <p className="text-sm font-black text-slate-800 tracking-tight">
+                          {val}
+                        </p>
+                      </div>
+                    );
+                  },
                 )}
               </div>
               <div className="space-y-4">
                 {analysis.reasons?.map((reason, i) => (
-                  <div key={i} className="flex gap-3 items-start group">
-                    <div className="mt-0.5">
-                      {analysis.score >= 1 ? (
-                        <CheckCircle2 size={16} className="text-emerald-500" />
-                      ) : (
-                        <AlertCircle size={16} className="text-rose-500" />
-                      )}
-                    </div>
-                    <p className="text-[13px] text-slate-600 font-medium leading-relaxed group-hover:text-slate-900 transition-colors">
+                  <div
+                    key={i}
+                    className={`flex gap-3 items-start p-3 rounded-xl border ${sentiment.light} ${sentiment.border}`}
+                  >
+                    <CheckCircle2
+                      size={16}
+                      className={`mt-0.5 shrink-0 ${sentiment.text}`}
+                    />
+                    <p className="text-[13px] text-slate-700 font-semibold leading-snug">
                       {reason}
                     </p>
                   </div>
@@ -194,9 +265,9 @@ export default function StockDetailView() {
               </div>
               <button
                 onClick={() => setIsAnalysisModalOpen(false)}
-                className="w-full mt-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase hover:bg-indigo-600 transition-all"
+                className={`w-full mt-8 py-4 text-white rounded-2xl font-black text-xs uppercase transition-all shadow-lg ${sentiment.bg} hover:brightness-110`}
               >
-                Close Report
+                Close Intelligence Report
               </button>
             </div>
           </div>
@@ -217,10 +288,9 @@ export default function StockDetailView() {
               {data?.symbol || symbol}
               <button
                 onClick={() => setIsAnalysisModalOpen(true)}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-sm ${isUp ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-rose-50 text-rose-700 border-rose-100"}`}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-sm transition-colors ${sentiment.light} ${sentiment.text} ${sentiment.border}`}
               >
-                <Info size={12} className="opacity-70" />
-                {analysis?.sentiment || "Analyzing..."}
+                {sentiment.icon} {analysis?.sentiment || "Analyzing..."}
               </button>
             </h1>
             <button
@@ -274,7 +344,6 @@ export default function StockDetailView() {
           />
           <RatioItem label="Face Value" value={data?.ratios?.faceValue} />
         </div>
-
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden max-h-[300px]">
           <div className="p-4 border-b border-slate-50 flex items-center gap-2 bg-slate-50/50">
             <Newspaper className="text-indigo-600" size={18} />
@@ -312,54 +381,26 @@ export default function StockDetailView() {
 
       {/* CHART SECTION */}
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
-        {/* --- MODERN PERIOD STATS CARDS --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="bg-slate-50/50 border border-slate-100 p-4 rounded-2xl flex items-center gap-4">
-            <div className="p-2 bg-white rounded-xl text-emerald-500 shadow-sm">
-              <ArrowUp size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Period High
-              </p>
-              <p className="text-lg font-black text-slate-900 tracking-tight">
-                ₹{formatNum(data?.periodHigh)}
-              </p>
-            </div>
-          </div>
-          <div className="bg-slate-50/50 border border-slate-100 p-4 rounded-2xl flex items-center gap-4">
-            <div className="p-2 bg-white rounded-xl text-rose-500 shadow-sm">
-              <ArrowDown size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Period Low
-              </p>
-              <p className="text-lg font-black text-slate-900 tracking-tight">
-                ₹{formatNum(data?.periodLow)}
-              </p>
-            </div>
-          </div>
-          <div className="bg-slate-50/50 border border-slate-100 p-4 rounded-2xl flex items-center gap-4">
-            <div
-              className={`p-2 bg-white rounded-xl shadow-sm ${isPeriodPositive ? "text-emerald-500" : "text-rose-500"}`}
-            >
-              <Activity size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                Period Return
-              </p>
-              <p
-                className={`text-lg font-black tracking-tight ${isPeriodPositive ? "text-emerald-600" : "text-rose-600"}`}
-              >
-                {isPeriodPositive ? "+" : ""}
-                {formatNum(data?.periodReturn)}%
-              </p>
-            </div>
-          </div>
+          <PeriodCard
+            label="Period High"
+            value={`₹${formatNum(data?.periodHigh)}`}
+            icon={<ArrowUp size={18} />}
+            color="text-emerald-500"
+          />
+          <PeriodCard
+            label="Period Low"
+            value={`₹${formatNum(data?.periodLow)}`}
+            icon={<ArrowDown size={18} />}
+            color="text-rose-500"
+          />
+          <PeriodCard
+            label="Period Return"
+            value={`${isPeriodPositive ? "+" : ""}${formatNum(data?.periodReturn)}%`}
+            icon={<Activity size={18} />}
+            color={isPeriodPositive ? "text-emerald-500" : "text-rose-500"}
+          />
         </div>
-
         <div className="flex justify-between items-center mb-6">
           <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
             {["1d", "1w", "1m", "3m", "6m", "1y", "3y", "max"].map((f) => (
@@ -393,7 +434,6 @@ export default function StockDetailView() {
             />
           </div>
         </div>
-
         <div className="h-[450px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
@@ -419,8 +459,6 @@ export default function StockDetailView() {
                 axisLine={false}
                 tickLine={false}
               />
-
-              {/* --- LEFT Y-AXIS (VOLUME) WITH LABEL --- */}
               <YAxis
                 yAxisId="vol"
                 orientation="left"
@@ -442,8 +480,6 @@ export default function StockDetailView() {
                   },
                 }}
               />
-
-              {/* --- RIGHT Y-AXIS (PRICE) WITH LABEL --- */}
               <YAxis
                 yAxisId="price"
                 orientation="right"
@@ -465,7 +501,6 @@ export default function StockDetailView() {
                   },
                 }}
               />
-
               <Tooltip
                 content={
                   <CustomTooltip
@@ -504,7 +539,7 @@ export default function StockDetailView() {
                 stroke={themeColor}
                 strokeWidth={2.5}
                 dot={false}
-                connectNulls={true}
+                connectNulls
               />
               {showDMA50 && (
                 <Line
@@ -514,7 +549,7 @@ export default function StockDetailView() {
                   stroke="#f59e0b"
                   strokeWidth={1.5}
                   dot={false}
-                  connectNulls={true}
+                  connectNulls
                 />
               )}
               {showDMA200 && (
@@ -525,7 +560,7 @@ export default function StockDetailView() {
                   stroke="#64748b"
                   strokeWidth={1.5}
                   dot={false}
-                  connectNulls={true}
+                  connectNulls
                 />
               )}
             </ComposedChart>
@@ -561,7 +596,6 @@ export default function StockDetailView() {
             * All values are in ₹ Crores
           </p>
         </div>
-
         <div className="space-y-16">
           {visibleTables.quarters && (
             <FinancialTable
@@ -583,9 +617,16 @@ export default function StockDetailView() {
           )}
         </div>
       </div>
+
+      {/* SHAREHOLDING PATTERN SECTION */}
+      {!shLoading && shareholding && (
+        <ShareholdingSection data={shareholding} analysis={analysis} />
+      )}
     </div>
   );
 }
+
+/* --- SUB-COMPONENTS --- */
 
 const RatioItem = ({ label, value }) => (
   <div className="flex justify-between items-center border-b border-slate-50 pb-2.5">
@@ -593,6 +634,20 @@ const RatioItem = ({ label, value }) => (
     <span className="text-slate-900 font-bold text-xs tracking-tight">
       {value || "N/A"}
     </span>
+  </div>
+);
+
+const PeriodCard = ({ label, value, icon, color }) => (
+  <div className="bg-slate-50/50 border border-slate-100 p-4 rounded-2xl flex items-center gap-4">
+    <div className={`p-2 bg-white rounded-xl shadow-sm ${color}`}>{icon}</div>
+    <div>
+      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+        {label}
+      </p>
+      <p className="text-lg font-black text-slate-900 tracking-tight">
+        {value}
+      </p>
+    </div>
   </div>
 );
 
