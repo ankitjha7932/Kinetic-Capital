@@ -8,6 +8,7 @@ import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import StrategicTerminal from "./pages/StrategicTerminal";
+import KineticTape from "./components/KineticTape"; 
 import { PlusCircle, LogOut, User } from "lucide-react";
 
 export default function App() {
@@ -37,7 +38,6 @@ export default function App() {
         <Routes>
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
-          {/* Default to Auth for login/register */}
           <Route
             path="*"
             element={<Auth onLoginSuccess={handleLoginSuccess} />}
@@ -45,7 +45,13 @@ export default function App() {
         </Routes>
       ) : (
         /* --- PROTECTED ROUTES (Logged In) --- */
-        <div className="min-h-screen bg-slate-50 font-sans">
+        <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
+          
+          {/* 🚀 KINETIC TICKER TAPE 
+              Sitting above the Nav ensures it spans 100% width 
+              without interference from the nav's sticky constraints. */}
+          <KineticTape />
+
           <nav className="bg-white border-b px-8 py-4 flex justify-between items-center sticky top-0 z-40 shadow-sm">
             <Link
               to="/"
@@ -84,7 +90,7 @@ export default function App() {
             </div>
           </nav>
 
-          <main className="animate-in fade-in duration-700">
+          <main className="flex-1 animate-in fade-in duration-700">
             <Routes>
               <Route
                 path="/"
@@ -95,8 +101,9 @@ export default function App() {
                 element={<StockDetail userId={userId} />}
               />
               <Route path="/profile" element={<Profile userId={userId} />} />
-              <Route path="*" element={<Navigate to="/" />} />
               <Route path="/strategy/:symbol" element={<StrategicTerminal />} />
+              {/* Default redirect for authenticated users */}
+              <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </main>
 
