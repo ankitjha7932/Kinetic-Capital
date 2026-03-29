@@ -33,7 +33,7 @@ public class PortfolioController : ControllerBase
     }
 
     [HttpGet("summary/{userId}")]
-    public async Task<IActionResult> GetSummary(string userId) 
+    public async Task<IActionResult> GetSummary(string userId)
     {
         try
         {
@@ -71,7 +71,7 @@ public class PortfolioController : ControllerBase
 
                 holdingResponses.Add(
                     new HoldingResponse(
-                        h.Id, 
+                        h.Id,
                         h.Symbol,
                         h.Quantity,
                         h.AvgBuyPrice,
@@ -96,7 +96,7 @@ public class PortfolioController : ControllerBase
             return Ok(
                 new PortfolioSummaryResponse
                 {
-                    UserId = userId, 
+                    UserId = userId,
                     TotalHoldings = holdingResponses.Count,
                     TotalInvested = totalInvested,
                     CurrentValue = currentValue,
@@ -222,6 +222,12 @@ public class PortfolioController : ControllerBase
         Console.WriteLine(">>> HIT: portfolio/high-infusion endpoint called");
         var result = await _marketService.GetHighInfusionStocksAsync();
         return Ok(result);
+    }
+
+    [HttpGet("ticker")]
+    public async Task<IActionResult> GetTicker()
+    {
+        return Ok(await _marketService.GetTickerDataAsync());
     }
 
     private decimal CalculatePnl(decimal quantity, decimal avgPrice, decimal currentPrice) =>
