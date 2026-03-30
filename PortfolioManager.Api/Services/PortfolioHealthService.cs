@@ -15,10 +15,10 @@ public class PortfolioHealthService
                 0,
                 0,
                 0,
-                Score: 0,
-                RatingBand: "Weak",
-                Positions: new(),
-                Warnings: new() { "No holdings found. Add some positions to start analysis." }
+                0,
+                "Weak",
+                new(),
+                new() { "No holdings found. Add some positions to start analysis." }
             );
         }
 
@@ -27,7 +27,6 @@ public class PortfolioHealthService
         var totalPnl = currentValue - totalInvested;
         var totalPnlPct = totalInvested == 0 ? 0 : (totalPnl / totalInvested) * 100m;
 
-        // Per-position advice
         var positions = new List<PositionAdvice>();
         foreach (var h in holdings)
         {
@@ -35,34 +34,19 @@ public class PortfolioHealthService
             var pnl = h.Quantity * (h.CurrentPrice - h.AvgBuyPrice);
             var pnlPct = invested == 0 ? 0 : (pnl / invested) * 100m;
 
-            string action;
-            string reason;
+            string action =
+                pnlPct <= -30 ? "SELL_FAST"
+                : pnlPct <= -10 ? "GRADUAL_SELL"
+                : pnlPct >= 30 ? "GRADUAL_SELL"
+                : pnlPct >= 10 ? "HOLD"
+                : "HOLD";
 
-            if (pnlPct <= -30)
-            {
-                action = "SELL_FAST";
-                reason = "Large unrealized loss (>30%). Consider cutting quickly.";
-            }
-            else if (pnlPct <= -10)
-            {
-                action = "GRADUAL_SELL";
-                reason = "Moderate loss (10–30%). Exit slowly or on bounces.";
-            }
-            else if (pnlPct >= 30)
-            {
-                action = "GRADUAL_SELL";
-                reason = "Large gains (>30%). Take profit gradually.";
-            }
-            else if (pnlPct >= 10)
-            {
-                action = "HOLD";
-                reason = "Reasonable gain (10–30%). Consider trailing stop.";
-            }
-            else
-            {
-                action = "HOLD";
-                reason = "Small move; no immediate action.";
-            }
+            string reason =
+                pnlPct <= -30 ? "Large unrealized loss (>30%). Consider cutting quickly."
+                : pnlPct <= -10 ? "Moderate loss (10–30%). Exit slowly or on bounces."
+                : pnlPct >= 30 ? "Large gains (>30%). Take profit gradually."
+                : pnlPct >= 10 ? "Reasonable gain (10–30%). Consider trailing stop."
+                : "Small move; no immediate action.";
 
             positions.Add(
                 new PositionAdvice(
@@ -73,12 +57,13 @@ public class PortfolioHealthService
                     h.CurrentPrice,
                     pnlPct,
                     action,
-                    reason
+                    reason,
+                    h.MarketCapLabel,
+                    new List<decimal>()
                 )
             );
         }
 
-        // Concentration risk: max single-position weight
         var weights = holdings
             .Select(h =>
                 (
@@ -90,24 +75,16 @@ public class PortfolioHealthService
             )
             .ToList();
 
-        var maxWeight = weights.Max(w => w.Weight);
-        var highlyConcentrated = maxWeight > 25m; 
+        var maxWeight = weights.Any() ? weights.Max(w => w.Weight) : 0;
+        var highlyConcentrated = maxWeight > 25m;
 
-        // Simple scoring: based on totalPnlPct and concentration
-        int score = 50; // start neutral
-
+        int score = 50;
         if (totalPnlPct >= 20)
             score += 20;
-        else if (totalPnlPct >= 5)
-            score += 10;
         else if (totalPnlPct <= -20)
             score -= 20;
-        else if (totalPnlPct <= -5)
-            score -= 10;
-
         if (highlyConcentrated)
             score -= 15;
-
         score = Math.Max(0, Math.Min(100, score));
 
         string band =
@@ -150,7 +127,7 @@ public class PortfolioHealthService
             list.Add(
                 new RecommendedStock(
                     "TCS",
-                    "Large-cap IT with strong profitability; suitable for moderate to low risk profiles.",
+                    "Large-cap IT with strong profitability.",
                     riskProfile == "High" ? 10 : 5
                 )
             );
@@ -166,11 +143,7 @@ public class PortfolioHealthService
         if (riskProfile == "High")
         {
             list.Add(
-                new RecommendedStock(
-                    "MIDCAP_IT",
-                    "Higher-volatility, high-growth IT midcaps for aggressive allocation.",
-                    5
-                )
+                new RecommendedStock("MIDCAP_IT", "Higher-volatility, high-growth IT midcaps.", 5)
             );
         }
 

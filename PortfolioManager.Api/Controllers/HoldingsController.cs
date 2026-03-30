@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using PortfolioManager.Api.Models;
+using PortfolioManager.Api.Services;
 
 namespace PortfolioManager.Api.Controllers;
 
@@ -11,22 +12,16 @@ namespace PortfolioManager.Api.Controllers;
 public class HoldingsController : ControllerBase
 {
     private readonly IMongoCollection<Holding> _holdings;
-    private readonly IMongoCollection<User> _users;
+    private readonly StockPriceService _priceService; // 👈 1. Added service
 
-    public HoldingsController(IMongoDatabase database)
+    public HoldingsController(IMongoDatabase database, StockPriceService priceService)
     {
         _holdings = database.GetCollection<Holding>("Holdings");
-        _users = database.GetCollection<User>("Users");
+        _priceService = priceService; // 👈 2. Injected service
     }
 
-    private string GetUserId()
-    {
-        var userId =
-            User.FindFirst("sub")?.Value
-            ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-
-        return userId ?? "";
-    }
+    private string GetUserId() =>
+        User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
 
     [HttpGet("me")]
     public async Task<IActionResult> GetMyHoldings()
@@ -37,17 +32,36 @@ public class HoldingsController : ControllerBase
 
         var holdings = await _holdings.Find(h => h.UserId == userId).ToListAsync();
 
+        // 3. BATCH FETCH: Get all prices for 2,000+ stocks in ONE call (cached for 30m)
+        var symbols = holdings.Select(h => h.Symbol).ToList();
+        var priceMap = await _priceService.GetBatchPricesAsync(symbols);
+
         var responses = holdings
-            .Select(h => new HoldingResponse(
-                h.Id!,
-                h.Symbol,
-                h.Quantity,
-                h.AvgBuyPrice,
-                2678m,
-                h.Quantity * (2678m - h.AvgBuyPrice),
-                h.BuyDate,
-                h.Tags ?? ""
-            ))
+            .Select(h =>
+            {
+                // Get price from map, fallback to buy price if missing
+                priceMap.TryGetValue(h.Symbol, out decimal currentPrice);
+                if (currentPrice <= 0)
+                    currentPrice = h.AvgBuyPrice;
+
+                decimal pnl = h.Quantity * (currentPrice - h.AvgBuyPrice);
+                decimal pnlPercent =
+                    h.AvgBuyPrice > 0 ? (currentPrice - h.AvgBuyPrice) / h.AvgBuyPrice * 100 : 0;
+
+                return new HoldingResponse(
+                    h.Id!,
+                    h.Symbol,
+                    h.Quantity,
+                    h.AvgBuyPrice,
+                    currentPrice,
+                    Math.Round(pnl, 2),
+                    h.BuyDate,
+                    0.5m, // Change1D Placeholder
+                    Math.Round(pnlPercent, 2),
+                    h.Tags ?? "Equity",
+                    "N/A" // MarketCapLabel Placeholder
+                );
+            })
             .ToList();
 
         return Ok(responses);
@@ -61,8 +75,6 @@ public class HoldingsController : ControllerBase
             return Unauthorized();
 
         var symbol = request.Symbol.ToUpper().Trim();
-
-        // Check if the user already owns this stock -> n stock A already present with some avg price, m stocks of A added, then we will calc it accordingly
         var existingHolding = await _holdings
             .Find(h => h.UserId == userId && h.Symbol == symbol)
             .FirstOrDefaultAsync();
@@ -70,21 +82,18 @@ public class HoldingsController : ControllerBase
         if (existingHolding != null)
         {
             decimal totalQuantity = existingHolding.Quantity + request.Quantity;
+            decimal newAvgPrice =
+                (
+                    (existingHolding.Quantity * existingHolding.AvgBuyPrice)
+                    + (request.Quantity * request.AvgBuyPrice)
+                ) / totalQuantity;
 
-            // Weighted Average Price Calculation
-            decimal currentTotalValue = existingHolding.Quantity * existingHolding.AvgBuyPrice;
-            decimal newPurchaseValue = request.Quantity * request.AvgBuyPrice;
-
-            decimal newAvgPrice = (currentTotalValue + newPurchaseValue) / totalQuantity;
-
-            // Update existing record
             var update = Builders<Holding>
                 .Update.Set(h => h.Quantity, totalQuantity)
                 .Set(h => h.AvgBuyPrice, Math.Round(newAvgPrice, 2))
                 .Set(h => h.BuyDate, DateTime.UtcNow);
 
             await _holdings.UpdateOneAsync(h => h.Id == existingHolding.Id, update);
-
             return Ok(
                 new
                 {
@@ -94,121 +103,61 @@ public class HoldingsController : ControllerBase
                 }
             );
         }
-        else
+
+        var holding = new Holding
         {
-            //nhi hai -> create new record
-            var holding = new Holding
-            {
-                UserId = userId,
-                Symbol = symbol,
-                Quantity = request.Quantity,
-                AvgBuyPrice = request.AvgBuyPrice,
-                BuyDate = request.PurchaseDate ?? DateTime.UtcNow,
-                Tags = request.Tags ?? "Equity",
-            };
+            UserId = userId,
+            Symbol = symbol,
+            Quantity = request.Quantity,
+            AvgBuyPrice = request.AvgBuyPrice,
+            BuyDate = request.PurchaseDate ?? DateTime.UtcNow,
+            Tags = request.Tags ?? "Equity",
+        };
 
-            await _holdings.InsertOneAsync(holding);
-            return CreatedAtAction(nameof(GetHolding), new { id = holding.Id }, holding);
-        }
-    }
-
-    [HttpPut("{id}")]
-    public async Task<IActionResult> UpdateHolding(
-        string id,
-        [FromBody] HoldingUpdateRequest request
-    )
-    {
-        if (!ObjectId.TryParse(id, out _))
-            return BadRequest("Invalid ID format.");
-
-        string userId = GetUserId();
-        var holding = await _holdings
-            .Find(h => h.Id == id && h.UserId == userId)
-            .FirstOrDefaultAsync();
-
-        if (holding == null)
-            return NotFound();
-
-        holding.Quantity = request.Quantity;
-        holding.AvgBuyPrice = request.AvgBuyPrice;
-
-        await _holdings.ReplaceOneAsync(h => h.Id == id, holding);
-        return NoContent();
+        await _holdings.InsertOneAsync(holding);
+        return CreatedAtAction(nameof(GetHolding), new { id = holding.Id }, holding);
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteHolding(string id)
     {
-        Console.WriteLine("--- Incoming Delete Request Claims ---");
-        foreach (var c in User.Claims)
-        {
-            Console.WriteLine($"CLAIM: {c.Type} = {c.Value}");
-        }
-
         string userIdString = GetUserId();
-        Console.WriteLine($"Extracted UserId: '{userIdString}'");
+        if (!ObjectId.TryParse(id, out _) || !ObjectId.TryParse(userIdString, out _))
+            return BadRequest(new { message = "Invalid ID format" });
 
-        if (!MongoDB.Bson.ObjectId.TryParse(id, out var holdingObjectId))
-        {
-            return BadRequest(new { message = $"Invalid Holding ID format: {id}" });
-        }
-
-        if (!MongoDB.Bson.ObjectId.TryParse(userIdString, out var userObjectId))
-        {
-            return Unauthorized(
-                new { message = $"User session invalid. ID in token is: '{userIdString}'" }
-            );
-        }
-
-        try
-        {
-            var filter = Builders<Holding>.Filter.And(
-                Builders<Holding>.Filter.Eq("_id", holdingObjectId),
-                Builders<Holding>.Filter.Eq("UserId", userObjectId)
-            );
-
-            var result = await _holdings.DeleteOneAsync(filter);
-
-            if (result.DeletedCount == 0)
-            {
-                return NotFound(
-                    new { message = "Holding not found or you don't have permission to delete it." }
-                );
-            }
-
-            return NoContent(); 
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Database Error: {ex.Message}");
-            return BadRequest(new { message = "An error occurred while deleting." });
-        }
+        var result = await _holdings.DeleteOneAsync(h => h.Id == id && h.UserId == userIdString);
+        return result.DeletedCount == 0 ? NotFound() : NoContent();
     }
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetHolding(string id)
     {
-        if (!ObjectId.TryParse(id, out _))
-            return BadRequest("Invalid ID format.");
-
         string userId = GetUserId();
-        var holding = await _holdings
-            .Find(h => h.Id == id && h.UserId == userId)
-            .FirstOrDefaultAsync();
-
-        if (holding == null)
+        var h = await _holdings.Find(h => h.Id == id && h.UserId == userId).FirstOrDefaultAsync();
+        if (h == null)
             return NotFound();
+
+        decimal currentPrice = await _priceService.GetLivePriceAsync(h.Symbol);
+        if (currentPrice <= 0)
+            currentPrice = h.AvgBuyPrice;
+
+        decimal pnl = h.Quantity * (currentPrice - h.AvgBuyPrice);
+        decimal pnlPercent =
+            h.AvgBuyPrice > 0 ? (currentPrice - h.AvgBuyPrice) / h.AvgBuyPrice * 100 : 0;
 
         return Ok(
             new HoldingResponse(
-                holding.Id!,
-                holding.Symbol,
-                holding.Quantity,
-                holding.AvgBuyPrice,
-                2500m,
-                holding.Quantity * (2500m - holding.AvgBuyPrice),
-                holding.BuyDate,
-                holding.Tags ?? ""
+                h.Id!,
+                h.Symbol,
+                h.Quantity,
+                h.AvgBuyPrice,
+                currentPrice,
+                Math.Round(pnl, 2),
+                h.BuyDate,
+                -1.2m,
+                Math.Round(pnlPercent, 2),
+                h.Tags ?? "Equity",
+                "N/A"
             )
         );
     }

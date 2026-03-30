@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using MongoDB.Bson;
+using MongoDB.Driver;
 using PortfolioManager.Api.Models;
 using PortfolioManager.Api.Services;
 
@@ -13,82 +14,55 @@ namespace PortfolioManager.Api.Controllers
     [Route("api/[controller]")]
     public class StocksController : ControllerBase
     {
-        private static readonly List<StockMaster> _allStocks = new();
-        private static readonly object _lock = new();
         private readonly StockDetailsService _detailsService;
         private readonly IStockAnalysisService _analysisService;
+        private readonly IMongoCollection<StockFundamental> _fundamentalCollection;
 
         public StocksController(
             StockDetailsService detailsService,
-            IStockAnalysisService analysisService
+            IStockAnalysisService analysisService,
+            IMongoDatabase database
         )
         {
             _detailsService = detailsService;
             _analysisService = analysisService;
-
-            if (_allStocks.Count > 0)
-                return;
-
-            lock (_lock)
-            {
-                if (_allStocks.Count > 0)
-                    return;
-                LoadStocksFromCsv();
-            }
+            // Matches your "StocksDeepData" collection
+            _fundamentalCollection = database.GetCollection<StockFundamental>("StocksDeepData");
         }
 
-        private void LoadStocksFromCsv()
-        {
-            try
-            {
-                var path = Path.Combine(Directory.GetCurrentDirectory(), "Data", "EQUITY_L.csv");
-
-                if (System.IO.File.Exists(path))
-                {
-                    var lines = System.IO.File.ReadAllLines(path);
-                    foreach (var line in lines.Skip(1))
-                    {
-                        var columns = line.Split(',');
-                        if (columns.Length > 1)
-                        {
-                            string rawSymbol = columns[0].Trim();
-                            string nseSymbol = rawSymbol.EndsWith(".NS")
-                                ? rawSymbol
-                                : $"{rawSymbol}.NS";
-                            string faceVal = columns[7].Trim();
-
-                            _allStocks.Add(
-                                new StockMaster(
-                                    Symbol: nseSymbol,
-                                    Name: columns[1].Trim(),
-                                    Sector: "Equity",
-                                    FaceValue: faceVal
-                                )
-                            );
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Error] Failed to read CSV: {ex.Message}");
-            }
-        }
-
+        /// <summary>
+        /// Unified Search: Used for both Global Search (Navbar) and Modal Search (Add to Portfolio).
+        /// </summary>
         [HttpGet("search")]
-        [ProducesResponseType(typeof(IEnumerable<StockMaster>), 200)]
-        public IActionResult Search([FromQuery] string query)
+        public async Task<IActionResult> Search([FromQuery] string query)
         {
             if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
-                return Ok(Enumerable.Empty<StockMaster>());
+                return Ok(new List<object>());
 
-            var results = _allStocks
-                .Where(s =>
-                    s.Symbol.Contains(query.ToUpper())
-                    || s.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+            // Case-insensitive regex for Symbol and CompanyName
+            var filter = Builders<StockFundamental>.Filter.Or(
+                Builders<StockFundamental>.Filter.Regex(
+                    s => s.Symbol,
+                    new BsonRegularExpression(query, "i")
+                ),
+                Builders<StockFundamental>.Filter.Regex(
+                    s => s.CompanyName,
+                    new BsonRegularExpression(query, "i")
                 )
-                .Take(15)
-                .ToList();
+            );
+
+            // High-performance projection: Only fetch what the UI needs for the dropdown
+            var results = await _fundamentalCollection
+                .Find(filter)
+                .Project(s => new
+                {
+                    symbol = s.Symbol,
+                    name = s.CompanyName,
+                    industry = s.Industry,
+                    marketCap = s.MarketCap,
+                })
+                .Limit(10)
+                .ToListAsync();
 
             return Ok(results);
         }
@@ -96,10 +70,7 @@ namespace PortfolioManager.Api.Controllers
         [HttpGet("details/{symbol}")]
         public async Task<IActionResult> GetDetails(string symbol, [FromQuery] string range = "1y")
         {
-            string ticker = symbol.ToUpper().EndsWith(".NS")
-                ? symbol.ToUpper()
-                : $"{symbol.ToUpper()}.NS";
-
+            string ticker = SanitizeTicker(symbol);
             var details = await _detailsService.GetStockDetailsAsync(ticker, range);
 
             if (details == null)
@@ -111,28 +82,21 @@ namespace PortfolioManager.Api.Controllers
         [HttpGet("analyze/{symbol}")]
         public async Task<IActionResult> GetAnalysis(string symbol)
         {
-            string ticker = symbol.ToUpper().EndsWith(".NS")
-                ? symbol.ToUpper()
-                : $"{symbol.ToUpper()}.NS";
-
+            string ticker = SanitizeTicker(symbol);
             var resultObj = await _detailsService.GetStockDetailsAsync(ticker, "1y");
 
             if (resultObj == null)
-                return NotFound(new { message = "Stock data not found for analysis" });
-
-            StockDetails details = (StockDetails)resultObj;
+                return NotFound(new { message = "Stock data not found" });
 
             try
             {
-                var analysis = _analysisService.AnalyzeStock(details);
-
+                var analysis = _analysisService.AnalyzeStock((StockDetails)resultObj);
                 return analysis != null
                     ? Ok(analysis)
-                    : BadRequest(new { message = "Analysis engine could not process the data" });
+                    : BadRequest(new { message = "Analysis failed" });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Analysis Exception]: {ex.Message}");
                 return StatusCode(500, new { error = "Analysis failed", details = ex.Message });
             }
         }
@@ -141,15 +105,14 @@ namespace PortfolioManager.Api.Controllers
         public async Task<IActionResult> GetShareholdingData(string symbol)
         {
             var stock = await _detailsService.GetStockDetailsAsync(symbol);
-            if (stock == null || stock.Shareholding == null)
+            if (stock == null || stock.Shareholding == null || !stock.Shareholding.Any())
                 return NotFound();
 
             var quarters = stock.Shareholding.First().Values.Keys.ToList();
-
-            // 2. Format for Pie Chart (Latest Quarter Only)
             var latestQuarter = quarters.Last();
+
             var pieData = stock
-                .Shareholding.Where(s => !s.Category.Contains("Shareholders")) // Filter out 'No. of Shareholders'
+                .Shareholding.Where(s => !s.Category.Contains("Shareholders"))
                 .Select(s => new
                 {
                     name = s.Category,
@@ -161,13 +124,16 @@ namespace PortfolioManager.Api.Controllers
                 new
                 {
                     Quarters = quarters,
-                    History = stock.Shareholding, // Full data for table
+                    History = stock.Shareholding,
                     PieData = pieData,
                     LatestQuarterName = latestQuarter,
                 }
             );
         }
-    }
 
-    public record StockMaster(string Symbol, string Name, string Sector, string FaceValue);
+        private string SanitizeTicker(string s) =>
+            s.ToUpper().EndsWith(".NS") || s.ToUpper().EndsWith(".BO")
+                ? s.ToUpper()
+                : $"{s.ToUpper()}.NS";
+    }
 }

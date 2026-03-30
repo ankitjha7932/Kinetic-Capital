@@ -32,6 +32,8 @@ public record HoldingResponse(
     decimal CurrentPrice,
     decimal UnrealizedPnl,
     DateTime PurchaseDate,
+    decimal Change1D,
+    decimal PnlPercent,
     string? Tags,
     string? MarketCapLabel = null
 );
@@ -43,6 +45,7 @@ public class PortfolioSummaryResponse
     public decimal TotalInvested { get; set; }
     public decimal CurrentValue { get; set; }
     public decimal TotalPnl { get; set; }
+    public decimal TotalPnlPercent { get; set; }
     public List<HoldingResponse> Holdings { get; set; } = new();
 }
 
