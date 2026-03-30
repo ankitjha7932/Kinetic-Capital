@@ -104,7 +104,8 @@ export default function Dashboard({ userId }) {
       <div className="space-y-4">
         <div className="flex items-center justify-between px-2">
           <h3 className="text-xl font-bold flex items-center gap-2">
-            <Zap className="text-amber-500 fill-amber-500" size={20} /> Cash Flood
+            <Zap className="text-amber-500 fill-amber-500" size={20} /> Cash
+            Flood
           </h3>
           {infusionLoading && (
             <Loader2 size={16} className="animate-spin text-indigo-500" />
@@ -217,8 +218,9 @@ export default function Dashboard({ userId }) {
         </div>
       </div>
 
+      {/* 🚀 FIXED: Passing 'positions' from 'analysis' instead of 'holdings' from 'summary' */}
       <PositionsList
-        holdings={data.summary?.holdings || []}
+        positions={data.analysis?.positions || []}
         onRefresh={fetchData}
         onSelectStock={(symbol) => navigate(`/stock/${symbol}`)}
       />
