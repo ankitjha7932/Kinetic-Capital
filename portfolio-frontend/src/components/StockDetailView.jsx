@@ -288,18 +288,36 @@ export default function StockDetailView() {
               <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">
                 {data?.symbol || symbol}
               </h1>
+
+              {/* --- THE AI AGENT BADGE --- */}
               <button
                 onClick={() => setIsAnalysisModalOpen(true)}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-sm transition-colors ${sentiment.light} ${sentiment.text} ${sentiment.border}`}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-sm transition-all hover:scale-105 active:scale-95 ${sentiment.light} ${sentiment.text} ${sentiment.border}`}
               >
-                {sentiment.icon} {analysis?.sentiment || "Analyzing..."}
+                {/* Pulsing Dot to show the Agent is "Thinking" if data is missing */}
+                {!analysis ? (
+                  <span className="flex h-2 w-2 rounded-full bg-slate-400 animate-pulse" />
+                ) : (
+                  sentiment.icon
+                )}
+                <span>{analysis?.sentiment || "Analyzing..."}</span>
               </button>
             </div>
+
             <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">
               {data?.companyName || "Loading Asset Name..."}
             </p>
+
+            {/* Strategic Command Link moved here for better accessibility */}
+            <button
+              onClick={() => navigate(`/strategy/${symbol}`)}
+              className="mt-3 w-fit flex items-center gap-2 px-4 py-1.5 bg-indigo-600 text-white rounded-lg font-black text-[9px] uppercase shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-colors"
+            >
+              <Zap size={12} className="fill-white" /> Open Strategic Command
+            </button>
           </div>
         </div>
+
         <div className="text-right">
           <div
             className={`text-4xl font-black ${isUp ? "text-emerald-600" : "text-rose-600"} tracking-tighter`}
@@ -309,7 +327,7 @@ export default function StockDetailView() {
           <div
             className={`flex items-center justify-end gap-1 text-sm font-bold ${isUp ? "text-emerald-500" : "text-rose-500"}`}
           >
-            {isUp ? <TrendingUp size={16} /> : <TrendingDown size={16} />}{" "}
+            {isUp ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
             {formatNum(data?.ratios?.priceChange)} (
             {formatNum(data?.ratios?.priceChangePercent)}%)
           </div>
