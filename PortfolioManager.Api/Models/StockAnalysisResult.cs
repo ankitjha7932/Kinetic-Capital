@@ -9,6 +9,7 @@ namespace PortfolioManager.Api.Models
         public string Industry { get; set; } = "N/A";
         public string LastUpdate { get; set; } = string.Empty;
         public List<ChartDataPoint> ChartData { get; set; } = new();
+        public string CompanyName { get; set; }
         public FundamentalRatios Ratios { get; set; } = new();
         public List<FinancialRow> QuarterlyResults { get; set; } = new();
         public List<FinancialRow> ProfitAndLoss { get; set; } = new();
