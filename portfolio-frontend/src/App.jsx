@@ -8,7 +8,8 @@ import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import StrategicTerminal from "./pages/StrategicTerminal";
-import KineticTape from "./components/KineticTape"; 
+import KineticTape from "./components/KineticTape";
+import GlobalSearch from "./components/GlobalSearch"; // 🚀 NEW IMPORT
 import { PlusCircle, LogOut, User } from "lucide-react";
 
 export default function App() {
@@ -34,7 +35,7 @@ export default function App() {
   return (
     <BrowserRouter>
       {!token ? (
-        /* --- PUBLIC ROUTES (Logged Out) --- */
+        /* --- PUBLIC ROUTES --- */
         <Routes>
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
@@ -44,28 +45,28 @@ export default function App() {
           />
         </Routes>
       ) : (
-        /* --- PROTECTED ROUTES (Logged In) --- */
+        /* --- PROTECTED ROUTES --- */
         <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
-          
-          {/* 🚀 KINETIC TICKER TAPE 
-              Sitting above the Nav ensures it spans 100% width 
-              without interference from the nav's sticky constraints. */}
           <KineticTape />
 
-          <nav className="bg-white border-b px-8 py-4 flex justify-between items-center sticky top-0 z-40 shadow-sm">
-            <Link
-              to="/"
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-            >
+          <nav className="bg-white border-b px-8 py-4 flex justify-between items-center sticky top-0 z-40 shadow-sm gap-8">
+            {/* 1. LOGO SECTION */}
+            <Link to="/" className="flex items-center gap-2 shrink-0">
               <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg shadow-indigo-200">
                 K
               </div>
-              <h1 className="text-xl font-bold text-slate-800 tracking-tight">
+              <h1 className="text-xl font-bold text-slate-800 tracking-tight hidden lg:block">
                 Kinetic Capital
               </h1>
             </Link>
 
-            <div className="flex items-center gap-3">
+            {/* 🚀 2. GLOBAL SEARCH (Discovery Bridge) */}
+            <div className="flex-1 max-w-md hidden md:block">
+              <GlobalSearch />
+            </div>
+
+            {/* 3. ACTION BUTTONS */}
+            <div className="flex items-center gap-3 shrink-0">
               <Link
                 to="/profile"
                 className="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
@@ -102,7 +103,6 @@ export default function App() {
               />
               <Route path="/profile" element={<Profile userId={userId} />} />
               <Route path="/strategy/:symbol" element={<StrategicTerminal />} />
-              {/* Default redirect for authenticated users */}
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </main>
