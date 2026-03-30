@@ -109,11 +109,11 @@ public class PortfolioController : ControllerBase
             // 2. Run the Health/Advice analysis
             var healthResult = _health.Analyze(userId, summary.Holdings);
 
-            // 3. 🚀 NEW: Fetch 7-day trends for all symbols in the portfolio
+            // 3 Fetch 7-day trends for all symbols in the portfolio
             var symbols = summary.Holdings.Select(h => h.Symbol).ToList();
             var sparklineMap = await _priceService.GetBatchSparklinesAsync(symbols);
 
-            // 4. 🚀 Inject history into each position's advice object
+            // 4. Inject history into each position's advice object
             foreach (var pos in healthResult.Positions)
             {
                 if (sparklineMap.TryGetValue(pos.Symbol, out var trend))

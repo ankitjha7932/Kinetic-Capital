@@ -222,14 +222,14 @@ namespace PortfolioManager.Api.Services
             {
                 Symbol = ticker,
                 Industry = fundamentals?.Industry ?? "N/A",
+                CompanyName = fundamentals?.CompanyName ?? ticker.Split('.')[0],
                 LastUpdate = istNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
                 Ratios = new FundamentalRatios
                 {
                     CurrentPrice = Math.Round(currentPrice, 2),
                     PriceChange = Math.Round(dailyChange, 2),
                     PriceChangePercent = Math.Round(dailyPct, 2),
-                    MarketCap =
-                        fundamentals?.MarketCap != null ? $"{fundamentals.MarketCap} Cr" : "N/A",
+                    MarketCap = FormatIndianCurrency(fundamentals?.MarketCap) + " Cr",
                     High52W = Math.Round(high52, 2),
                     Low52W = Math.Round(low52, 2),
                     HistoricalHigh = Math.Round(allPrices.Max(p => p.Close), 2),
@@ -276,5 +276,25 @@ namespace PortfolioManager.Api.Services
             s.ToUpper().EndsWith(".NS") || s.ToUpper().EndsWith(".BO")
                 ? s.ToUpper()
                 : $"{s.ToUpper()}.NS";
+
+        private string FormatIndianCurrency(string? rawMarketCap)
+        {
+            if (string.IsNullOrEmpty(rawMarketCap) || rawMarketCap == "N/A")
+                return "₹ N/A";
+
+            string cleanValue = rawMarketCap.Replace(",", "").Replace(" Cr", "").Trim();
+
+            if (decimal.TryParse(cleanValue, out decimal amount))
+            {
+                // Use Indian culture for correct comma placement (e.g., 9,66,312)
+                var indianCulture = new System.Globalization.CultureInfo("en-IN");
+
+                string formatted = amount.ToString("N0", indianCulture);
+
+                return $"₹ {formatted}";
+            }
+
+            return $"₹ {rawMarketCap}";
+        }
     }
 }
