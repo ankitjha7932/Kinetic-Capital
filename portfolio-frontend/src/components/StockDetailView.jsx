@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import api from "../api/axios";
 import FinancialTable from "./FinancialTable";
-import ShareholdingSection from "./ShareHoldingSection"; 
+import ShareholdingSection from "./ShareHoldingSection";
 
 export default function StockDetailView() {
   const { symbol } = useParams();
@@ -283,22 +283,21 @@ export default function StockDetailView() {
           >
             <ArrowLeft size={20} />
           </button>
-          <div>
-            <h1 className="text-2xl font-black text-slate-900 leading-tight flex items-center gap-3">
-              {data?.symbol || symbol}
+          <div className="flex flex-col">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">
+                {data?.symbol || symbol}
+              </h1>
               <button
                 onClick={() => setIsAnalysisModalOpen(true)}
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-sm transition-colors ${sentiment.light} ${sentiment.text} ${sentiment.border}`}
               >
                 {sentiment.icon} {analysis?.sentiment || "Analyzing..."}
               </button>
-            </h1>
-            <button
-              onClick={() => navigate(`/strategy/${symbol}`)}
-              className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase shadow-lg shadow-indigo-100"
-            >
-              <Zap size={14} className="fill-white" /> Open Strategic Command
-            </button>
+            </div>
+            <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">
+              {data?.companyName || "Loading Asset Name..."}
+            </p>
           </div>
         </div>
         <div className="text-right">
