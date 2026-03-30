@@ -38,36 +38,25 @@ public class PortfolioController : ControllerBase
         try
         {
             var holdings = await _db.Holdings.Where(h => h.UserId == userId).ToListAsync();
-
             var holdingResponses = new List<HoldingResponse>();
 
             foreach (var h in holdings)
             {
                 decimal livePrice = await _priceService.GetLivePriceAsync(h.Symbol);
-
                 if (livePrice <= 0)
                     livePrice = h.AvgBuyPrice;
 
-                // Fetch frm StockFundmental COllection
+                decimal unrealizedPnl = CalculatePnl(h.Quantity, h.AvgBuyPrice, livePrice);
+                decimal pnlPercent =
+                    h.AvgBuyPrice > 0
+                        ? Math.Round(((livePrice - h.AvgBuyPrice) / h.AvgBuyPrice) * 100, 2)
+                        : 0;
+
+                // Mocked 1D change
+                decimal change1D = 0.85m;
+
                 var fundamental = await _db.Stocks.FirstOrDefaultAsync(s => s.Symbol == h.Symbol);
-
-                double mCapValue = 0;
-                if (fundamental != null && !string.IsNullOrEmpty(fundamental.MarketCap))
-                {
-                    string cleanValue = fundamental
-                        .MarketCap.Replace("Cr", "", StringComparison.OrdinalIgnoreCase)
-                        .Replace(",", "")
-                        .Trim();
-
-                    double.TryParse(
-                        cleanValue,
-                        System.Globalization.NumberStyles.Any,
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        out mCapValue
-                    );
-                }
-
-                string? marketCapLabel = GetMarketCapLabel(mCapValue);
+                string? marketCapLabel = GetMarketCapLabel(ParseMarketCap(fundamental?.MarketCap));
 
                 holdingResponses.Add(
                     new HoldingResponse(
@@ -76,39 +65,131 @@ public class PortfolioController : ControllerBase
                         h.Quantity,
                         h.AvgBuyPrice,
                         livePrice,
-                        CalculatePnl(h.Quantity, h.AvgBuyPrice, livePrice),
+                        unrealizedPnl,
                         h.BuyDate,
-                        h.Tags ?? "",
+                        change1D,
+                        pnlPercent,
+                        h.Tags ?? "Equity",
                         marketCapLabel
                     )
                 );
             }
 
-            var totalInvested = Math.Round(
-                holdingResponses.Sum(h => h.Quantity * h.AvgBuyPrice),
-                2
-            );
-            var currentValue = Math.Round(
-                holdingResponses.Sum(h => h.Quantity * h.CurrentPrice),
-                2
-            );
+            var totalInv = Math.Round(holdingResponses.Sum(h => h.Quantity * h.AvgBuyPrice), 2);
+            var totalCur = Math.Round(holdingResponses.Sum(h => h.Quantity * h.CurrentPrice), 2);
+            var totalPnl = Math.Round(totalCur - totalInv, 2);
+            var totalPnlPct = totalInv > 0 ? Math.Round((totalPnl / totalInv) * 100, 2) : 0;
 
             return Ok(
                 new PortfolioSummaryResponse
                 {
                     UserId = userId,
                     TotalHoldings = holdingResponses.Count,
-                    TotalInvested = totalInvested,
-                    CurrentValue = currentValue,
-                    TotalPnl = Math.Round(currentValue - totalInvested, 2),
+                    TotalInvested = totalInv,
+                    CurrentValue = totalCur,
+                    TotalPnl = totalPnl,
+                    TotalPnlPercent = totalPnlPct,
                     Holdings = holdingResponses,
                 }
             );
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Error generating summary: {ex.Message}");
+            return StatusCode(500, $"Error: {ex.Message}");
         }
+    }
+
+    [HttpGet("analysis")]
+    public async Task<IActionResult> AnalyzeCurrentUser([FromQuery] string userId)
+    {
+        // 1. Get current portfolio data
+        var summaryResult = await GetSummary(userId) as OkObjectResult;
+        if (summaryResult?.Value is PortfolioSummaryResponse summary)
+        {
+            // 2. Run the Health/Advice analysis
+            var healthResult = _health.Analyze(userId, summary.Holdings);
+
+            // 3. 🚀 NEW: Fetch 7-day trends for all symbols in the portfolio
+            var symbols = summary.Holdings.Select(h => h.Symbol).ToList();
+            var sparklineMap = await _priceService.GetBatchSparklinesAsync(symbols);
+
+            // 4. 🚀 Inject history into each position's advice object
+            foreach (var pos in healthResult.Positions)
+            {
+                if (sparklineMap.TryGetValue(pos.Symbol, out var trend))
+                {
+                    pos.History = trend;
+                }
+            }
+
+            // Return the healthResult which now contains per-position history
+            return Ok(healthResult);
+        }
+        return BadRequest("Could not analyze portfolio.");
+    }
+
+    [HttpGet("suggestions")]
+    public async Task<IActionResult> GetSuggestions([FromQuery] string userId)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null)
+            return NotFound("User not found.");
+
+        var sectors = (user.PreferredSectors ?? "").Split(
+            ',',
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+        );
+        return Ok(_health.SuggestStocks(user.RiskProfile ?? "Moderate", sectors));
+    }
+
+    [HttpGet("price/{symbol}")]
+    public async Task<IActionResult> GetSinglePrice(string symbol)
+    {
+        decimal price = await _priceService.GetLivePriceAsync(symbol);
+        return price <= 0 ? NotFound() : Ok(new { Symbol = symbol, Price = price });
+    }
+
+    [HttpGet("news/{symbol}")]
+    public async Task<IActionResult> GetNews(string symbol)
+    {
+        var news = await _newsService.GetStockNewsAsync(symbol);
+        return (news == null || !news.Any()) ? NotFound() : Ok(news);
+    }
+
+    [HttpGet("high-infusion")]
+    public async Task<IActionResult> GetHighInfusion() =>
+        Ok(await _marketService.GetHighInfusionStocksAsync());
+
+    [HttpGet("ticker")]
+    public async Task<IActionResult> GetTicker() => Ok(await _marketService.GetTickerDataAsync());
+
+    [HttpDelete("holding/{id}")]
+    public async Task<IActionResult> RemoveHolding(string id)
+    {
+        var holding = await _db.Holdings.FindAsync(id);
+        if (holding == null)
+            return NotFound();
+
+        _db.Holdings.Remove(holding);
+        await _db.SaveChangesAsync();
+        return Ok(new { message = "Asset removed" });
+    }
+
+    private double ParseMarketCap(string? mCapStr)
+    {
+        if (string.IsNullOrEmpty(mCapStr))
+            return 0;
+        string cleanValue = mCapStr
+            .Replace("Cr", "", StringComparison.OrdinalIgnoreCase)
+            .Replace(",", "")
+            .Trim();
+        double.TryParse(
+            cleanValue,
+            System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out double val
+        );
+        return val;
     }
 
     private string? GetMarketCapLabel(double mCapCr)
@@ -124,112 +205,8 @@ public class PortfolioController : ControllerBase
         return "MICRO-CAP";
     }
 
-    // api/portfolio/analysis?userId={id}
-    [HttpGet("analysis")]
-    public async Task<IActionResult> AnalyzeCurrentUser([FromQuery] string userId)
-    {
-        var holdings = await _db.Holdings.Where(h => h.UserId == userId).ToListAsync();
-
-        var holdingResponses = new List<HoldingResponse>();
-
-        foreach (var h in holdings)
-        {
-            decimal livePrice = await _priceService.GetLivePriceAsync(h.Symbol);
-            if (livePrice <= 0)
-                livePrice = h.AvgBuyPrice;
-
-            var fundamental = await _db.Stocks.FirstOrDefaultAsync(s => s.Symbol == h.Symbol);
-            double mCapValue = 0;
-
-            if (fundamental != null && !string.IsNullOrEmpty(fundamental.MarketCap))
-            {
-                string cleanValue = fundamental
-                    .MarketCap.Replace("Cr", "", StringComparison.OrdinalIgnoreCase)
-                    .Replace(",", "")
-                    .Trim();
-                double.TryParse(
-                    cleanValue,
-                    System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    out mCapValue
-                );
-            }
-
-            string? marketCapLabel = GetMarketCapLabel(mCapValue);
-
-            holdingResponses.Add(
-                new HoldingResponse(
-                    h.Id,
-                    h.Symbol,
-                    h.Quantity,
-                    h.AvgBuyPrice,
-                    livePrice,
-                    CalculatePnl(h.Quantity, h.AvgBuyPrice, livePrice),
-                    h.BuyDate,
-                    h.Tags ?? "",
-                    marketCapLabel
-                )
-            );
-        }
-
-        var result = _health.Analyze(userId, holdingResponses);
-        return Ok(result);
-    }
-
-    // api/portfolio/suggestions?userId={id}
-    [HttpGet("suggestions")]
-    public async Task<IActionResult> GetSuggestions([FromQuery] string userId)
-    {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId);
-        if (user == null)
-            return NotFound("User not found.");
-
-        var sectorString = user.PreferredSectors ?? "";
-        var sectors = sectorString.Split(
-            ',',
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
-        );
-
-        var result = _health.SuggestStocks(user.RiskProfile ?? "Moderate", sectors);
-        return Ok(result);
-    }
-
-    // api/portfolio/price/{symbol}
-    [HttpGet("price/{symbol}")]
-    public async Task<IActionResult> GetSinglePrice(string symbol)
-    {
-        decimal price = await _priceService.GetLivePriceAsync(symbol);
-        if (price <= 0)
-            return NotFound("Could not fetch price for this symbol.");
-
-        return Ok(new { Symbol = symbol, Price = price });
-    }
-
-    [HttpGet("news/{symbol}")]
-    public async Task<IActionResult> GetNews(string symbol)
-    {
-        var news = await _newsService.GetStockNewsAsync(symbol);
-
-        if (news == null || !news.Any())
-            return NotFound(new { message = "No news found for this symbol." });
-
-        return Ok(news);
-    }
-
-    [HttpGet("high-infusion")]
-    public async Task<IActionResult> GetHighInfusion()
-    {
-        Console.WriteLine(">>> HIT: portfolio/high-infusion endpoint called");
-        var result = await _marketService.GetHighInfusionStocksAsync();
-        return Ok(result);
-    }
-
-    [HttpGet("ticker")]
-    public async Task<IActionResult> GetTicker()
-    {
-        return Ok(await _marketService.GetTickerDataAsync());
-    }
-
     private decimal CalculatePnl(decimal quantity, decimal avgPrice, decimal currentPrice) =>
         Math.Round(quantity * (currentPrice - avgPrice), 2);
+
+    public record PortfolioHistoryPoint(DateTime Date, decimal Value);
 }
