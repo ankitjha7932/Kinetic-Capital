@@ -17,6 +17,7 @@ public class PeerComparisonService
     public async Task<object?> GetPeerIntelligenceAsync(string symbol)
     {
         var filter = Builders<StockFundamental>.Filter.Eq(s => s.Symbol, symbol);
+
         var projection = Builders<StockFundamental>
             .Projection.Include(s => s.Symbol)
             .Include(s => s.Industry)
@@ -41,14 +42,30 @@ public class PeerComparisonService
                 {
                     p.Name,
                     p.Symbol,
+                    // 1. P/E Ratio
                     PE = FormatIndianNumber(p.PE),
+
+                    // 2. Market Cap (Rs. Cr.)
                     MarketCap = FormatIndianNumber(p.MarketCap),
+
+                    // 3. Dividend Yield (%)
                     DivYield = FormatIndianNumber(p.DivYield, isPercentage: true),
+
+                    // 4. Net Profit Quarter (Rs. Cr.)
                     NetProfitQtr = FormatIndianNumber(p.NetProfitQtr),
+
+                    // 5. Quarterly Profit Variance (%)
                     ProfitVarQtr = FormatIndianNumber(p.ProfitVarQtr, isPercentage: true),
+
+                    // 6. Sales Quarter (Rs. Cr.)
                     SalesQtr = FormatIndianNumber(p.SalesQtr),
+
+                    // 7. Quarterly Sales Variance (%)
                     SalesVarQtr = FormatIndianNumber(p.SalesVarQtr, isPercentage: true),
+
+                    // 8. ROCE (%)
                     ROCE = FormatIndianNumber(p.ROCE, isPercentage: true),
+
                     IsCurrent = (
                         p.Symbol != null
                         && p.Symbol.Equals(symbol, StringComparison.OrdinalIgnoreCase)
@@ -67,10 +84,18 @@ public class PeerComparisonService
         if (string.IsNullOrWhiteSpace(rawValue) || rawValue == "N/A")
             return "—";
 
-        if (double.TryParse(rawValue, out double numericValue))
+        string cleanValue = rawValue.Replace(",", "").Replace("%", "").Trim();
+
+        if (
+            double.TryParse(
+                cleanValue,
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out double numericValue
+            )
+        )
         {
             string formatted = numericValue.ToString("N2", _indianCulture);
-
             return isPercentage ? $"{formatted}%" : formatted;
         }
 
