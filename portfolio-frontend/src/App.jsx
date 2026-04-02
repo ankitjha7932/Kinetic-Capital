@@ -9,7 +9,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import StrategicTerminal from "./pages/StrategicTerminal";
 import KineticTape from "./components/KineticTape";
-import GlobalSearch from "./components/GlobalSearch"; // 🚀 NEW IMPORT
+import GlobalSearch from "./components/GlobalSearch"; 
 import { PlusCircle, LogOut, User } from "lucide-react";
 
 export default function App() {
