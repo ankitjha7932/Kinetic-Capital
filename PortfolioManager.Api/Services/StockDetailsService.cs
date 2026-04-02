@@ -238,7 +238,6 @@ namespace PortfolioManager.Api.Services
                     ROCE = fundamentals?.ROCE != null ? $"{fundamentals.ROCE}%" : "N/A",
                     ROE = fundamentals?.ROE != null ? $"{fundamentals.ROE}%" : "N/A",
                     DividendYield = fundamentals?.DividendYield ?? "0.00",
-                    // Read access is now safe because initialization is locked
                     FaceValue =
                         _faceValueCache.GetValueOrDefault(rawSymbol)
                         ?? fundamentals?.FaceValue
@@ -252,7 +251,7 @@ namespace PortfolioManager.Api.Services
                 ProfitAndLoss = fundamentals?.ProfitAndLoss ?? new(),
                 BalanceSheet = fundamentals?.BalanceSheet ?? new(),
                 CashFlow = fundamentals?.CashFlow ?? new(),
-                Peers = fundamentals?.Peers ?? new(),
+                Peers = fundamentals?.PeersData ?? new(),
                 Shareholding = fundamentals?.Shareholding ?? new(),
             };
         }

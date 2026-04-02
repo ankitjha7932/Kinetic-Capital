@@ -17,17 +17,19 @@ namespace PortfolioManager.Api.Controllers
         private readonly StockDetailsService _detailsService;
         private readonly IStockAnalysisService _analysisService;
         private readonly IMongoCollection<StockFundamental> _fundamentalCollection;
+        private readonly PeerComparisonService _peerService;
 
         public StocksController(
             StockDetailsService detailsService,
             IStockAnalysisService analysisService,
-            IMongoDatabase database
+            IMongoDatabase database,
+            PeerComparisonService peerComparisonService
         )
         {
             _detailsService = detailsService;
             _analysisService = analysisService;
-            // Matches your "StocksDeepData" collection
             _fundamentalCollection = database.GetCollection<StockFundamental>("StocksDeepData");
+            _peerService = peerComparisonService;
         }
 
         /// <summary>
@@ -129,6 +131,23 @@ namespace PortfolioManager.Api.Controllers
                     LatestQuarterName = latestQuarter,
                 }
             );
+        }
+
+        [HttpGet("peers/{symbol}")]
+        public async Task<IActionResult> GetPeers(string symbol)
+        {
+            string ticker = symbol.ToUpper().EndsWith(".NS")
+                ? symbol.ToUpper()
+                : $"{symbol.ToUpper()}.NS";
+
+            var peerData = await _peerService.GetPeerIntelligenceAsync(ticker);
+
+            if (peerData == null)
+            {
+                return NotFound(new { message = $"No peer data found for {symbol}" });
+            }
+
+            return Ok(peerData);
         }
 
         private string SanitizeTicker(string s) =>

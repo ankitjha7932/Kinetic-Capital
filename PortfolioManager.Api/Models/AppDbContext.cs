@@ -1,6 +1,6 @@
 using System;
 using Microsoft.EntityFrameworkCore;
-using MongoDB.EntityFrameworkCore.Extensions; // Ensure this is present
+using MongoDB.EntityFrameworkCore.Extensions;
 
 namespace PortfolioManager.Api.Models
 {
