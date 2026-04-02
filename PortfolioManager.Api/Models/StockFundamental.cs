@@ -32,21 +32,31 @@ public class StockFundamental
     public List<FinancialRow> ProfitAndLoss { get; set; } = new();
     public List<FinancialRow> BalanceSheet { get; set; } = new();
     public List<FinancialRow> CashFlow { get; set; } = new();
-    public List<PeerData> Peers { get; set; } = new();
-    public List<ShareholdingData> Shareholding { get; set; }
+    public List<PeerData> PeersData { get; set; } = new();
+    public List<string> PeerSymbols { get; set; } = new();
+    public List<ShareholdingData> Shareholding { get; set; } = new();
+    public List<ShareholdingData> ShareholdingYearly { get; set; } = new();
+    public string ScreenerId { get; set; } = string.Empty;
+    public DateTime? LastUpserted { get; set; }
 }
 
+[BsonIgnoreExtraElements]
 public class PeerData
 {
     public string Name { get; set; } = null!;
-    public string Price { get; set; } = null!;
-    public string PE { get; set; } = null!;
-    public string MarketCap { get; set; } = null!;
-    public string ROCE { get; set; } = null!;
+    public string? Symbol { get; set; }
+    public string PE { get; set; } = string.Empty;
+    public string MarketCap { get; set; } = string.Empty;
+    public string DivYield { get; set; } = string.Empty;
+    public string NetProfitQtr { get; set; } = string.Empty;
+    public string ProfitVarQtr { get; set; } = string.Empty;
+    public string SalesQtr { get; set; } = string.Empty;
+    public string SalesVarQtr { get; set; } = string.Empty;
+    public string ROCE { get; set; } = string.Empty;
 }
 
 public class ShareholdingData
 {
-    public string Category { get; set; } // e.g., "Promoters"
-    public Dictionary<string, string> Values { get; set; } // Key: "Dec 2025", Value: "14.57"
+    public string Category { get; set; } = string.Empty;
+    public Dictionary<string, string> Values { get; set; } = new();
 }

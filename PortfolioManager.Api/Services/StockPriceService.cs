@@ -82,7 +82,6 @@ public class StockPriceService
         return prices ?? new();
     }
 
-    // 🚀 NEW: Minimal addition for landing page sparklines
     public async Task<Dictionary<string, List<decimal>>> GetBatchSparklinesAsync(
         List<string> symbols
     )

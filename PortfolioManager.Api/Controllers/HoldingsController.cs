@@ -12,12 +12,12 @@ namespace PortfolioManager.Api.Controllers;
 public class HoldingsController : ControllerBase
 {
     private readonly IMongoCollection<Holding> _holdings;
-    private readonly StockPriceService _priceService; // 👈 1. Added service
+    private readonly StockPriceService _priceService;
 
     public HoldingsController(IMongoDatabase database, StockPriceService priceService)
     {
         _holdings = database.GetCollection<Holding>("Holdings");
-        _priceService = priceService; // 👈 2. Injected service
+        _priceService = priceService;
     }
 
     private string GetUserId() =>
@@ -32,7 +32,6 @@ public class HoldingsController : ControllerBase
 
         var holdings = await _holdings.Find(h => h.UserId == userId).ToListAsync();
 
-        // 3. BATCH FETCH: Get all prices for 2,000+ stocks in ONE call (cached for 30m)
         var symbols = holdings.Select(h => h.Symbol).ToList();
         var priceMap = await _priceService.GetBatchPricesAsync(symbols);
 
