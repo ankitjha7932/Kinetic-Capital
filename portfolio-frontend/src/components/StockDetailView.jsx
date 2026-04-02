@@ -30,6 +30,7 @@ import {
 import api from "../api/axios";
 import FinancialTable from "./FinancialTable";
 import ShareholdingSection from "./ShareHoldingSection";
+import PeerComparisonTable from "./PeerComparisonTable";
 
 export default function StockDetailView() {
   const { symbol } = useParams();
@@ -44,6 +45,8 @@ export default function StockDetailView() {
   const [news, setNews] = useState([]);
   const [range, setRange] = useState("1d");
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
+  const [peerData, setPeerData] = useState(null);
+  const [peerLoading, setPeerLoading] = useState(true);
 
   const [visibleTables, setVisibleTables] = useState({
     quarters: true,
@@ -102,28 +105,42 @@ export default function StockDetailView() {
 
   useEffect(() => {
     if (!symbol || symbol === "undefined") return;
+
     const fetchData = async () => {
       try {
         setLoading(true);
-        setShLoading(true); // Reset loading state
+        setPeerLoading(true);
         const [analRes, newsRes, detRes, shRes] = await Promise.all([
           api.get(`/stocks/analyze/${symbol}`),
           api.get(`/portfolio/news/${symbol}`),
           api.get(`/stocks/details/${symbol}?range=${range}`),
           api.get(`/stocks/${symbol}/shareholding`),
         ]);
+
         setAnalysis(analRes.data);
         setNews(newsRes.data.slice(0, 7));
         setData(detRes.data);
         setShareholding(shRes.data);
+
+        if (detRes.data?.peers) {
+          // Check for 'peers' as seen in Swagger
+          setPeerData({
+            industry: detRes.data.industry,
+            peers: detRes.data.peers,
+          });
+        } else {
+          console.error("Peers array not found in API response", detRes.data);
+        }
       } catch (err) {
         console.error("Fetch error:", err);
       } finally {
         setLoading(false);
         setNewsLoading(false);
-        setShLoading(false); // Stop loading
+        setShLoading(false);
+        setPeerLoading(false);
       }
     };
+
     fetchData();
   }, [symbol, range]);
 
@@ -294,7 +311,6 @@ export default function StockDetailView() {
                 onClick={() => setIsAnalysisModalOpen(true)}
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider cursor-pointer shadow-sm transition-all hover:scale-105 active:scale-95 ${sentiment.light} ${sentiment.text} ${sentiment.border}`}
               >
-                {/* Pulsing Dot to show the Agent is "Thinking" if data is missing */}
                 {!analysis ? (
                   <span className="flex h-2 w-2 rounded-full bg-slate-400 animate-pulse" />
                 ) : (
@@ -308,7 +324,6 @@ export default function StockDetailView() {
               {data?.companyName || "Loading Asset Name..."}
             </p>
 
-            {/* Strategic Command Link moved here for better accessibility */}
             <button
               onClick={() => navigate(`/strategy/${symbol}`)}
               className="mt-3 w-fit flex items-center gap-2 px-4 py-1.5 bg-indigo-600 text-white rounded-lg font-black text-[9px] uppercase shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-colors"
@@ -584,6 +599,13 @@ export default function StockDetailView() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* --- PEER INTELLIGENCE SECTION --- */}
+      {!peerLoading && peerData && peerData.peers && (
+        <div className="my-12">
+          <PeerComparisonTable data={peerData} />
+        </div>
+      )}
 
       {/* FINANCIALS */}
       <div className="space-y-8 pt-10">
