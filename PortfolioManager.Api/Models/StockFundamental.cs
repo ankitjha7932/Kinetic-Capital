@@ -32,8 +32,16 @@ public class StockFundamental
     public List<FinancialRow> ProfitAndLoss { get; set; } = new();
     public List<FinancialRow> BalanceSheet { get; set; } = new();
     public List<FinancialRow> CashFlow { get; set; } = new();
-    public List<PeerData> PeersData { get; set; } = new();
-    public List<string> PeerSymbols { get; set; } = new();
+
+    // --- UPDATED PART ---
+    // Making these nullable (?) is critical for MongoDB backward compatibility
+    [BsonElement("PeersData")]
+    public List<PeerData>? PeersData { get; set; } = new();
+
+    [BsonElement("PeerSymbols")]
+    public List<string>? PeerSymbols { get; set; } = new();
+    // --------------------
+
     public List<ShareholdingData> Shareholding { get; set; } = new();
     public List<ShareholdingData> ShareholdingYearly { get; set; } = new();
     public string ScreenerId { get; set; } = string.Empty;

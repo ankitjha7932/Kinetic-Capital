@@ -35,6 +35,11 @@ public class PortfolioController : ControllerBase
     [HttpGet("summary/{userId}")]
     public async Task<IActionResult> GetSummary(string userId)
     {
+        if (string.IsNullOrEmpty(userId))
+        {
+            return BadRequest("User ID is required.");
+        }
+
         try
         {
             var holdings = await _db.Holdings.Where(h => h.UserId == userId).ToListAsync();
@@ -42,10 +47,20 @@ public class PortfolioController : ControllerBase
 
             foreach (var h in holdings)
             {
-                decimal livePrice = await _priceService.GetLivePriceAsync(h.Symbol);
+                // 1. Fetch Live Price (Safe Fetch)
+                decimal livePrice = 0;
+                try
+                {
+                    livePrice = await _priceService.GetLivePriceAsync(h.Symbol);
+                }
+                catch
+                { /* Log price service error if needed */
+                }
+
                 if (livePrice <= 0)
                     livePrice = h.AvgBuyPrice;
 
+                // 2. Calculations
                 decimal unrealizedPnl = CalculatePnl(h.Quantity, h.AvgBuyPrice, livePrice);
                 decimal pnlPercent =
                     h.AvgBuyPrice > 0
@@ -55,8 +70,25 @@ public class PortfolioController : ControllerBase
                 // Mocked 1D change
                 decimal change1D = 0.85m;
 
-                var fundamental = await _db.Stocks.FirstOrDefaultAsync(s => s.Symbol == h.Symbol);
-                string? marketCapLabel = GetMarketCapLabel(ParseMarketCap(fundamental?.MarketCap));
+                // 3. Fetch Fundamental Data (DEFENSIVE FETCH)
+                // This is where the 'PeerSymbols' crash was happening.
+                // We wrap it so one bad document doesn't kill the whole request.
+                string? marketCapLabel = null;
+                try
+                {
+                    var fundamental = await _db.Stocks.FirstOrDefaultAsync(s =>
+                        s.Symbol == h.Symbol
+                    );
+                    if (fundamental != null)
+                    {
+                        marketCapLabel = GetMarketCapLabel(ParseMarketCap(fundamental.MarketCap));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log the specific stock that is failing mapping
+                    Console.WriteLine($"Mapping Error for {h.Symbol}: {ex.Message}");
+                }
 
                 holdingResponses.Add(
                     new HoldingResponse(
@@ -75,11 +107,17 @@ public class PortfolioController : ControllerBase
                 );
             }
 
-            var totalInv = Math.Round(holdingResponses.Sum(h => h.Quantity * h.AvgBuyPrice), 2);
-            var totalCur = Math.Round(holdingResponses.Sum(h => h.Quantity * h.CurrentPrice), 2);
+            // 4. Global Portfolio Aggregates
+            var totalInv = holdingResponses.Any()
+                ? Math.Round(holdingResponses.Sum(h => h.Quantity * h.AvgBuyPrice), 2)
+                : 0;
+            var totalCur = holdingResponses.Any()
+                ? Math.Round(holdingResponses.Sum(h => h.Quantity * h.CurrentPrice), 2)
+                : 0;
             var totalPnl = Math.Round(totalCur - totalInv, 2);
             var totalPnlPct = totalInv > 0 ? Math.Round((totalPnl / totalInv) * 100, 2) : 0;
 
+            // FINAL SUCCESS RETURN
             return Ok(
                 new PortfolioSummaryResponse
                 {
@@ -95,7 +133,9 @@ public class PortfolioController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Error: {ex.Message}");
+            // FINAL ERROR RETURN (Fixes CS0161)
+            Console.WriteLine($"Fatal Portfolio Summary Error: {ex}");
+            return StatusCode(500, $"Internal Server Error: {ex.Message}");
         }
     }
 
