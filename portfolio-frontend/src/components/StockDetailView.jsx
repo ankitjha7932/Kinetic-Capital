@@ -717,12 +717,15 @@ const CustomTooltip = ({ active, payload, range, toggles = {} }) => {
           {label}
         </p>
         <div className="space-y-1.5">
+          {/* PRICE */}
           <div className="flex justify-between gap-4">
             <span className="text-slate-400 font-bold">Price:</span>
             <span className="font-black text-white">
               ₹{Number(data.price || 0).toFixed(2)}
             </span>
           </div>
+
+          {/* 50 DMA - Added check for showDMA50 toggle */}
           {toggles?.showDMA50 && data.dmA50 && (
             <div className="flex justify-between gap-4">
               <span className="text-amber-500 font-bold">50 DMA:</span>
@@ -731,6 +734,18 @@ const CustomTooltip = ({ active, payload, range, toggles = {} }) => {
               </span>
             </div>
           )}
+
+          {/* 200 DMA - ADDED THIS BLOCK */}
+          {toggles?.showDMA200 && data.dmA200 && (
+            <div className="flex justify-between gap-4">
+              <span className="text-slate-400 font-bold">200 DMA:</span>
+              <span className="font-black text-slate-300">
+                ₹{Number(data.dmA200).toFixed(2)}
+              </span>
+            </div>
+          )}
+
+          {/* VOLUME */}
           <div className="flex justify-between gap-4 pt-1 border-t border-slate-800">
             <span className="text-slate-500 font-bold">Vol:</span>
             <span className="text-slate-300 font-bold">
