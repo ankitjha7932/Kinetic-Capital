@@ -110,11 +110,12 @@ export default function StockDetailView() {
       try {
         setLoading(true);
         setPeerLoading(true);
-        const [analRes, newsRes, detRes, shRes] = await Promise.all([
+        const [analRes, newsRes, detRes, shRes, peerRes] = await Promise.all([
           api.get(`/stocks/analyze/${symbol}`),
           api.get(`/portfolio/news/${symbol}`),
           api.get(`/stocks/details/${symbol}?range=${range}`),
           api.get(`/stocks/${symbol}/shareholding`),
+          api.get(`/Stocks/peers/${symbol}`), // Added the specific peers call
         ]);
 
         setAnalysis(analRes.data);
@@ -122,14 +123,12 @@ export default function StockDetailView() {
         setData(detRes.data);
         setShareholding(shRes.data);
 
-        if (detRes.data?.peers) {
-          // Check for 'peers' as seen in Swagger
+        // Map the new peer endpoint data
+        if (peerRes.data) {
           setPeerData({
-            industry: detRes.data.industry,
-            peers: detRes.data.peers,
+            industry: detRes.data.industry || peerRes.data.industry,
+            peers: peerRes.data.peers || peerRes.data, // Handles both direct array or wrapped object
           });
-        } else {
-          console.error("Peers array not found in API response", detRes.data);
         }
       } catch (err) {
         console.error("Fetch error:", err);
