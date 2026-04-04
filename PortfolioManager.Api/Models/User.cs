@@ -51,7 +51,7 @@ namespace PortfolioManager.Api.Models
         public string? GoogleId { get; set; }
 
         [BsonElement("createdAt")]
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public DateTime? CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
     public class Otp
