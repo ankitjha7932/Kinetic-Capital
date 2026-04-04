@@ -79,7 +79,6 @@ public class AuthService
         }
 
         otpRecord.IsVerified = true;
-
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
 
         if (user == null)
@@ -108,8 +107,6 @@ public class AuthService
         try
         {
             await _emailService.SendResetEmailAsync(email, resetLink);
-
-            // EF Core: Update properties directly and save
             user.ResetToken = token;
             user.ResetTokenExpiry = DateTime.UtcNow.AddHours(1);
             user.LastResetRequest = DateTime.UtcNow;
@@ -169,8 +166,10 @@ public class AuthService
     {
         try
         {
+            // Improved Environment Variable Check
             var clientId =
                 Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
+                ?? Environment.GetEnvironmentVariable("VITE_GOOGLE_CLIENT_ID")
                 ?? _config["Google:ClientId"];
 
             if (string.IsNullOrEmpty(clientId))
@@ -178,7 +177,7 @@ public class AuthService
 
             var settings = new GoogleJsonWebSignature.ValidationSettings
             {
-                Audience = new List<string> { clientId },
+                Audience = new List<string> { clientId.Trim() },
             };
 
             var payload = await GoogleJsonWebSignature.ValidateAsync(googleToken, settings);
@@ -202,27 +201,29 @@ public class AuthService
             else if (string.IsNullOrEmpty(user.GoogleId))
             {
                 user.GoogleId = payload.Subject;
-                if (string.IsNullOrEmpty(user.FullName))
-                {
-                    user.FullName = payload.Name;
-                }
+                user.FullName ??= payload.Name;
             }
 
             await _db.SaveChangesAsync();
-
             return (true, "Success", GenerateJwt(user.Id, user.Email!), user.Id);
         }
         catch (Exception ex)
         {
-            // Log ex.Message if needed
-            return (false, "Google authentication failed.", null, null);
+            return (false, $"Google authentication failed: {ex.Message}", null, null);
         }
     }
 
     public string GenerateJwt(string userId, string email)
     {
-        var keyString = Environment.GetEnvironmentVariable("JWT_KEY") ?? _config["Jwt:Key"];
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString!));
+        var keyString =
+            Environment.GetEnvironmentVariable("JWT_KEY")
+            ?? Environment.GetEnvironmentVariable("Jwt__Key")
+            ?? _config["Jwt:Key"];
+
+        if (string.IsNullOrEmpty(keyString))
+            throw new Exception("JWT Key is missing. Check Render environment variables.");
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
@@ -230,6 +231,7 @@ public class AuthService
             {
                 new Claim(JwtRegisteredClaimNames.Sub, userId),
                 new Claim(JwtRegisteredClaimNames.Email, email),
+                new Claim(ClaimTypes.NameIdentifier, userId),
             },
             expires: DateTime.Now.AddDays(7),
             signingCredentials: creds
