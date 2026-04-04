@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { BrowserRouter, Routes, Route, Link, Navigate } from "react-router-dom";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import StockDetail from "./components/StockDetailView";
@@ -9,7 +10,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import StrategicTerminal from "./pages/StrategicTerminal";
 import KineticTape from "./components/KineticTape";
-import GlobalSearch from "./components/GlobalSearch"; 
+import GlobalSearch from "./components/GlobalSearch";
 import { PlusCircle, LogOut, User } from "lucide-react";
 
 export default function App() {
@@ -17,6 +18,9 @@ export default function App() {
   const [userId, setUserId] = useState(localStorage.getItem("userId"));
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Securely load the key from the .env file using Vite's syntax
+  const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   const handleLoginSuccess = (newToken, newUserId) => {
     localStorage.setItem("token", newToken);
@@ -36,21 +40,22 @@ export default function App() {
     <BrowserRouter>
       {!token ? (
         /* --- PUBLIC ROUTES --- */
-        <Routes>
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route
-            path="*"
-            element={<Auth onLoginSuccess={handleLoginSuccess} />}
-          />
-        </Routes>
+        <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+          <Routes>
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route
+              path="*"
+              element={<Auth onLoginSuccess={handleLoginSuccess} />}
+            />
+          </Routes>
+        </GoogleOAuthProvider>
       ) : (
         /* --- PROTECTED ROUTES --- */
         <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
           <KineticTape />
 
           <nav className="bg-white border-b px-8 py-4 flex justify-between items-center sticky top-0 z-40 shadow-sm gap-8">
-            {/* 1. LOGO SECTION */}
             <Link to="/" className="flex items-center gap-2 shrink-0">
               <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg shadow-indigo-200">
                 K
@@ -60,12 +65,10 @@ export default function App() {
               </h1>
             </Link>
 
-            {/* 🚀 2. GLOBAL SEARCH (Discovery Bridge) */}
             <div className="flex-1 max-w-md hidden md:block">
               <GlobalSearch />
             </div>
 
-            {/* 3. ACTION BUTTONS */}
             <div className="flex items-center gap-3 shrink-0">
               <Link
                 to="/profile"
