@@ -20,7 +20,6 @@ const COLORS = [
 
 export default function PeerComparisonTable({ data }) {
   const navigate = useNavigate();
-  // Using 'marketCap' as default sort key
   const [sortConfig, setSortConfig] = useState({
     key: "marketCap",
     direction: "desc",
@@ -29,14 +28,9 @@ export default function PeerComparisonTable({ data }) {
 
   if (!data || !data.peers || data.peers.length === 0) return null;
 
-  /**
-   * Helper to handle API case sensitivity.
-   * Checks for both 'symbol' and 'Symbol', 'pe' and 'PE', etc.
-   */
   const getVal = (obj, key) => {
     if (!obj) return null;
     if (obj[key] !== undefined) return obj[key];
-    // Check TitleCase version (e.g., 'marketCap' -> 'MarketCap')
     const titleKey = key.charAt(0).toUpperCase() + key.slice(1);
     return obj[titleKey];
   };
@@ -48,7 +42,7 @@ export default function PeerComparisonTable({ data }) {
     return parseFloat(cleanVal) || 0;
   };
 
-  const formatIndian = (val, isCurrency = false) => {
+  const formatIndian = (val, isCurrency = false, isPercent = false) => {
     if (val === undefined || val === null || val === "" || val === "—")
       return "—";
     const num = parseValue(val);
@@ -56,7 +50,11 @@ export default function PeerComparisonTable({ data }) {
       maximumFractionDigits: 2,
       minimumFractionDigits: 2,
     }).format(num);
-    return isCurrency ? `₹${formatted}` : formatted;
+
+    let result = formatted;
+    if (isCurrency) result = `₹${formatted}`;
+    if (isPercent) result = `${formatted}%`;
+    return result;
   };
 
   const sortedPeers = useMemo(() => {
@@ -82,6 +80,13 @@ export default function PeerComparisonTable({ data }) {
 
   const displayData = activeSlice || (pieData.length > 0 ? pieData[0] : null);
 
+  // Helper for dynamic formatting in the center of the Donut
+  const isCurrencyType = sortConfig.key.toLowerCase().includes("market");
+  const isPercentType =
+    sortConfig.key.toLowerCase().includes("yield") ||
+    sortConfig.key.toLowerCase().includes("var") ||
+    sortConfig.key.toLowerCase().includes("roce");
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 xl:grid-cols-7 gap-6">
@@ -102,7 +107,8 @@ export default function PeerComparisonTable({ data }) {
                 {displayData
                   ? formatIndian(
                       displayData.value,
-                      sortConfig.key.toLowerCase().includes("market"),
+                      isCurrencyType,
+                      isPercentType,
                     )
                   : "0.00"}
               </span>
@@ -126,9 +132,9 @@ export default function PeerComparisonTable({ data }) {
                     <Cell
                       key={index}
                       fill={entry.fill}
-                      className="outline-none transition-all duration-300"
+                      className="outline-none transition-all duration-300 cursor-pointer"
                       opacity={
-                        activeSlice && activeSlice.name !== entry.name ? 0.3 : 1
+                        displayData && displayData.name !== entry.name ? 0.3 : 1
                       }
                     />
                   ))}
@@ -136,19 +142,33 @@ export default function PeerComparisonTable({ data }) {
               </PieChart>
             </ResponsiveContainer>
           </div>
-          {/* LEGEND */}
           <div className="w-full mt-6 pt-6 border-t border-slate-50">
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
               {pieData.map((entry) => (
                 <div
                   key={entry.name}
-                  className={`flex items-center gap-2.5 p-1.5 rounded-xl transition-all duration-300 cursor-default ${displayData?.name === entry.name ? "bg-slate-50 translate-x-1" : "opacity-60 hover:opacity-100"}`}
+                  onClick={() =>
+                    setActiveSlice(
+                      activeSlice?.name === entry.name ? null : entry,
+                    )
+                  }
+                  className={`flex items-center gap-2.5 p-1.5 rounded-xl transition-all duration-300 cursor-pointer ${
+                    displayData?.name === entry.name
+                      ? "bg-slate-50 translate-x-1 ring-1 ring-slate-100 shadow-sm"
+                      : "opacity-60 hover:opacity-100"
+                  }`}
                 >
                   <div
                     className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
                     style={{ backgroundColor: entry.fill }}
                   />
-                  <span className="text-[10px] font-black text-slate-900 truncate uppercase tracking-tighter">
+                  <span
+                    className={`text-[10px] font-black truncate uppercase tracking-tighter ${
+                      displayData?.name === entry.name
+                        ? "text-indigo-600"
+                        : "text-slate-900"
+                    }`}
+                  >
                     {entry.name}
                   </span>
                 </div>
@@ -157,7 +177,7 @@ export default function PeerComparisonTable({ data }) {
           </div>
         </div>
 
-        {/* --- RIGHT: DATA TERMINAL (STICKY & REDIRECTABLE) --- */}
+        {/* --- RIGHT: DATA TERMINAL --- */}
         <div className="xl:col-span-5 bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col">
           <div className="p-8 flex justify-between items-center border-b border-slate-50">
             <div className="flex items-center gap-4">
@@ -262,24 +282,28 @@ export default function PeerComparisonTable({ data }) {
                           {getVal(peer, "pe") || "—"}
                         </td>
                         <td className="p-5 text-center border-b border-slate-50 bg-white group-hover:bg-slate-50/80">
-                          {formatIndian(getVal(peer, "marketCap"), true)}
+                          {formatIndian(getVal(peer, "marketCap"), true, false)}
                         </td>
                         <td className="p-5 text-center border-b border-slate-50 bg-white group-hover:bg-slate-50/80 text-slate-500">
-                          {getVal(peer, "divYield") || "0.00"}
+                          {getVal(peer, "divYield") || "0.00%"}
                         </td>
                         <td className="p-5 text-center border-b border-slate-50 bg-white group-hover:bg-slate-50/80">
-                          {formatIndian(getVal(peer, "netProfitQtr"))}
+                          {formatIndian(
+                            getVal(peer, "netProfitQtr"),
+                            false,
+                            false,
+                          )}
                         </td>
                         <td
                           className={`p-5 text-center border-b border-slate-50 bg-white group-hover:bg-slate-50/80 ${parseValue(profitVar) < 0 ? "text-rose-600" : "text-emerald-600"}`}
                         >
-                          {profitVar || "0.00"}%
+                          {profitVar || "0.00%"}
                         </td>
                         <td className="p-5 text-center border-b border-slate-50 bg-white group-hover:bg-slate-50/80">
-                          {formatIndian(getVal(peer, "salesQtr"))}
+                          {formatIndian(getVal(peer, "salesQtr"), false, false)}
                         </td>
                         <td className="p-5 text-center border-b border-slate-50 bg-white group-hover:bg-slate-50/80 text-slate-700">
-                          {getVal(peer, "roce") || "0.00"}%
+                          {getVal(peer, "roce") || "0.00%"}
                         </td>
                       </tr>
                     );
@@ -294,8 +318,6 @@ export default function PeerComparisonTable({ data }) {
   );
 }
 
-/** * Restored SortHeader Component
- */
 const SortHeader = ({ label, sKey, config, setConfig, isLast }) => {
   const isActive = config.key === sKey;
   return (

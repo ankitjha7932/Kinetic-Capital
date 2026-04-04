@@ -1,6 +1,15 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, AlertCircle, Zap, CheckCircle2 } from 'lucide-react';
 
+const formatIndian = (val) => {
+  if (val === null || val === undefined || val === "" || val === "—") return "—";
+  const num = parseFloat(val.toString().replace(/,/g, ""));
+  return isNaN(num) ? val : new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+};
+
 const FinancialTable = ({ data, title }) => {
   const filteredData = data?.filter(row => row.metric !== "Raw PDF") || [];
   if (filteredData.length === 0) return null;
@@ -17,7 +26,6 @@ const FinancialTable = ({ data, title }) => {
   const latestHeader = headers[headers.length - 1];
   const prevHeader = headers[headers.length - 2];
 
-  // 1. ADDED: STRATEGIC SENTIMENT LOGIC
   const getSentiment = () => {
     const profitRow = filteredData.find(r => r.metric.match(/Net Profit|Profit after tax/i));
     const salesRow = filteredData.find(r => r.metric.match(/Sales|Revenue/i));
@@ -55,16 +63,19 @@ const FinancialTable = ({ data, title }) => {
   return (
     <div className="space-y-6 mb-20">
       <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-4 px-2">
-            <h2 className="text-2xl font-black text-slate-800 tracking-tight">{title}</h2>
-            
-            {/* 2. ADDED: THE STRATEGIC SUMMARY BADGE */}
-            {sentiment && (
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest shadow-sm ${sentiment.color}`}>
-                    {sentiment.icon}
-                    {sentiment.label}
-                </div>
-            )}
+        <div className="flex items-end justify-between px-2">
+            <div className="flex items-center gap-4">
+                <h2 className="text-2xl font-black text-slate-800 tracking-tight">{title}</h2>
+                {sentiment && (
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest shadow-sm ${sentiment.color}`}>
+                        {sentiment.icon}
+                        {sentiment.label}
+                    </div>
+                )}
+            </div>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded">
+                * All values in ₹ Crores
+            </span>
         </div>
 
         {(highlights.positive.length > 0 || highlights.negative.length > 0) && (
@@ -139,7 +150,7 @@ const FinancialTable = ({ data, title }) => {
                         <td key={header} className={`px-6 py-6 text-[13px] text-right border-b border-slate-50 tabular-nums whitespace-nowrap ${isLatest ? 'bg-indigo-50/30' : ''}`}>
                           <div className="flex flex-col items-end justify-center min-h-[44px]">
                               <span className="text-slate-900 font-black">
-                                  {currentVal != null ? currentVal.toLocaleString('en-IN') : "—"}
+                                  {formatIndian(currentVal)}
                               </span>
                               <div className="h-4 flex items-center">
                                 {trendInfo && (
