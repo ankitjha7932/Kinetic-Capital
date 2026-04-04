@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Google.Apis.Auth;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using PortfolioManager.Api.Models;
@@ -26,7 +27,6 @@ public class AuthService
         bool isRegistration = false
     )
     {
-        // Normalize email to ensure check works regardless of case/spaces
         email = email.Trim().ToLower();
 
         if (isRegistration && await _db.Users.AnyAsync(u => u.Email == email))
@@ -46,11 +46,13 @@ public class AuthService
                 Email = email,
                 HashedOtp = hashedOtp,
                 ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+                CreatedAt = DateTime.UtcNow,
             }
         );
 
         await _db.SaveChangesAsync();
         await _emailService.SendOtpEmailAsync(email, otpCode);
+
         return (true, "OTP sent successfully.");
     }
 
@@ -60,6 +62,7 @@ public class AuthService
     )
     {
         email = email.Trim().ToLower();
+
         var otpRecord = await _db
             .Otps.Where(o => o.Email == email && !o.IsVerified)
             .OrderByDescending(o => o.CreatedAt)
@@ -77,14 +80,12 @@ public class AuthService
 
         otpRecord.IsVerified = true;
 
-        // Try to find the existing user
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
 
-        // If not found, create AND add to DB
         if (user == null)
         {
-            user = new User { Email = email };
-            _db.Users.Add(user); 
+            user = new User { Email = email, CreatedAt = DateTime.UtcNow };
+            _db.Users.Add(user);
         }
 
         await _db.SaveChangesAsync();
@@ -107,9 +108,12 @@ public class AuthService
         try
         {
             await _emailService.SendResetEmailAsync(email, resetLink);
+
+            // EF Core: Update properties directly and save
             user.ResetToken = token;
             user.ResetTokenExpiry = DateTime.UtcNow.AddHours(1);
             user.LastResetRequest = DateTime.UtcNow;
+
             await _db.SaveChangesAsync();
             return (true, "Reset link sent.");
         }
@@ -133,6 +137,7 @@ public class AuthService
         user.PasswordHash = HashPassword(newPassword);
         user.ResetToken = null;
         user.ResetTokenExpiry = null;
+
         await _db.SaveChangesAsync();
         return (true, "Password updated.");
     }
@@ -144,6 +149,7 @@ public class AuthService
     {
         email = email.Trim().ToLower();
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
+
         if (
             user == null
             || string.IsNullOrEmpty(user.PasswordHash)
@@ -154,13 +160,69 @@ public class AuthService
         return (true, "Success", GenerateJwt(user.Id, user.Email!), user.Id);
     }
 
+    public async Task<(
+        bool Success,
+        string Message,
+        string? Token,
+        string? UserId
+    )> LoginWithGoogleAsync(string googleToken)
+    {
+        try
+        {
+            var clientId =
+                Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
+                ?? _config["Google:ClientId"];
+
+            if (string.IsNullOrEmpty(clientId))
+                return (false, "Google Client ID is not configured on server.", null, null);
+
+            var settings = new GoogleJsonWebSignature.ValidationSettings
+            {
+                Audience = new List<string> { clientId },
+            };
+
+            var payload = await GoogleJsonWebSignature.ValidateAsync(googleToken, settings);
+            string email = payload.Email.ToLower().Trim();
+
+            var user = await _db.Users.FirstOrDefaultAsync(u =>
+                u.GoogleId == payload.Subject || u.Email == email
+            );
+
+            if (user == null)
+            {
+                user = new User
+                {
+                    Email = email,
+                    GoogleId = payload.Subject,
+                    FullName = payload.Name,
+                    CreatedAt = DateTime.UtcNow,
+                };
+                _db.Users.Add(user);
+            }
+            else if (string.IsNullOrEmpty(user.GoogleId))
+            {
+                user.GoogleId = payload.Subject;
+                if (string.IsNullOrEmpty(user.FullName))
+                {
+                    user.FullName = payload.Name;
+                }
+            }
+
+            await _db.SaveChangesAsync();
+
+            return (true, "Success", GenerateJwt(user.Id, user.Email!), user.Id);
+        }
+        catch (Exception ex)
+        {
+            // Log ex.Message if needed
+            return (false, "Google authentication failed.", null, null);
+        }
+    }
+
     public string GenerateJwt(string userId, string email)
     {
         var keyString = Environment.GetEnvironmentVariable("JWT_KEY") ?? _config["Jwt:Key"];
-        if (string.IsNullOrEmpty(keyString) || keyString.Length < 16)
-            throw new Exception("JWT Key missing or too short.");
-
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyString!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(

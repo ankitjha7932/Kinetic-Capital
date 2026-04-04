@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using PortfolioManager.Api.Models;
 using PortfolioManager.Api.Services;
@@ -15,11 +16,8 @@ public class AuthController : ControllerBase
     [HttpPost("send-otp")]
     public async Task<IActionResult> SendOtp([FromBody] SendOtpRequest req)
     {
-        // Pass 'true' if register hai to 
         bool isReg = req.Flow?.ToLower() == "register";
-
         var res = await _auth.SendOtpAsync(req.Email, isReg);
-
         return res.Success ? Ok(new { message = res.Message }) : BadRequest(res.Message);
     }
 
@@ -53,5 +51,22 @@ public class AuthController : ControllerBase
     {
         var res = await _auth.ResetPasswordAsync(req.Token, req.NewPassword);
         return res.Success ? Ok(new { message = res.Message }) : BadRequest(res.Message);
+    }
+
+    public record GoogleLoginRequest([property: JsonPropertyName("token")] string Token);
+
+    [HttpPost("google-login")]
+    public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginRequest req)
+    {
+        if (string.IsNullOrEmpty(req.Token))
+        {
+            return BadRequest("Google token is required.");
+        }
+
+        var res = await _auth.LoginWithGoogleAsync(req.Token);
+
+        return res.Success
+            ? Ok(new { token = res.Token, userId = res.UserId })
+            : BadRequest(res.Message);
     }
 }
