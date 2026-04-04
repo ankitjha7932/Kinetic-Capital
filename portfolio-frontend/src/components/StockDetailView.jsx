@@ -630,9 +630,6 @@ export default function StockDetailView() {
               </button>
             ))}
           </div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">
-            * All values are in ₹ Crores
-          </p>
         </div>
         <div className="space-y-16">
           {visibleTables.quarters && (
