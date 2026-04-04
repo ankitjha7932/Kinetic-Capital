@@ -17,26 +17,24 @@ Console.WriteLine(
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Clear default mapping to allow Custom Claims
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
+// Database Configuration
 var mongoUri =
-    Environment.GetEnvironmentVariable("DATABASE_URL") ?? builder.Configuration["DATABASE_URL"];
-
-if (string.IsNullOrEmpty(mongoUri))
-{
-    mongoUri = "mongodb://localhost:27017";
-}
-
+    Environment.GetEnvironmentVariable("DATABASE_URL")
+    ?? builder.Configuration["DATABASE_URL"]
+    ?? "mongodb://localhost:27017";
 var mongoClient = new MongoClient(mongoUri);
 var databaseName = "KineticCapitalDB";
 
 builder.Services.AddSingleton<IMongoClient>(mongoClient);
 builder.Services.AddScoped(sp => mongoClient.GetDatabase(databaseName));
-
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMongoDB(mongoClient, databaseName)
 );
 
+// 1. CORS Policy Setup
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(
@@ -52,25 +50,24 @@ builder.Services.AddCors(options =>
     );
 });
 
+// Services Registration (Duplicates Removed)
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddMemoryCache();
 
+builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<PortfolioHealthService>();
 builder.Services.AddScoped<StockDetailsService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<StockPriceService>();
 builder.Services.AddScoped<NewsService>();
 builder.Services.AddScoped<IStockAnalysisService, StockAnalysisService>();
-builder.Services.AddMemoryCache();
 builder.Services.AddScoped<MarketService>();
-builder.Services.AddControllers();
-builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<IPromptService, PromptService>();
-builder.Services.AddScoped<IStockAnalysisService, StockAnalysisService>();
-builder.Services.AddHostedService<MarketScannerWorker>();
 builder.Services.AddScoped<PeerComparisonService>();
+builder.Services.AddHostedService<MarketScannerWorker>();
 
+// HttpClient Configurations
 builder
     .Services.AddHttpClient<StockPriceService>()
     .ConfigurePrimaryHttpMessageHandler(() =>
@@ -93,6 +90,7 @@ builder
         }
     );
 
+// Swagger/OpenAPI
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "PortfolioManager", Version = "v1" });
@@ -125,12 +123,10 @@ builder.Services.AddSwaggerGen(c =>
     );
 });
 
+// JWT Authentication
 var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? builder.Configuration["Jwt:Key"];
-
 if (string.IsNullOrEmpty(jwtKey))
-{
     throw new Exception("JWT Key is missing. Check your .env file.");
-}
 
 builder
     .Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -151,17 +147,27 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-app.UseSwagger();
-app.UseSwaggerUI();
+// --- MIDDLEWARE PIPELINE (Order is Critical) ---
 
-var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
-if (!app.Environment.IsDevelopment())
+// 1. CORS MUST BE FIRST to handle Preflight (OPTIONS) requests
+app.UseCors("FrontendPolicy");
+
+if (app.Environment.IsDevelopment())
 {
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+else
+{
+    // 2. HTTPS Redirection only after CORS
+    app.UseHttpsRedirection();
+
+    // Set Port for Production/Vercel
+    var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
     app.Urls.Add($"http://0.0.0.0:{port}");
 }
 
-app.UseHttpsRedirection();
-app.UseCors("FrontendPolicy");
+// 3. Routing, then Auth, then Map
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

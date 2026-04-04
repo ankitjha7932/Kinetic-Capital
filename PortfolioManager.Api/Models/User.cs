@@ -7,10 +7,10 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace PortfolioManager.Api.Models
 {
-    [BsonIgnoreExtraElements] 
+    [BsonIgnoreExtraElements]
     public class User
     {
-       [BsonId]
+        [BsonId]
         [BsonRepresentation(BsonType.ObjectId)]
         public string Id { get; set; } = ObjectId.GenerateNewId().ToString();
 
@@ -46,6 +46,12 @@ namespace PortfolioManager.Api.Models
 
         [BsonElement("lastResetRequest")]
         public DateTime? LastResetRequest { get; set; }
+
+        [BsonElement("googleId")]
+        public string? GoogleId { get; set; }
+
+        [BsonElement("createdAt")]
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
     public class Otp
@@ -62,5 +68,6 @@ namespace PortfolioManager.Api.Models
     }
 
     public record ForgotPasswordRequest(string Email);
+
     public record ResetPasswordRequest(string Token, string NewPassword);
 }
