@@ -295,5 +295,21 @@ namespace PortfolioManager.Api.Services
 
             return $"₹ {rawMarketCap}";
         }
+
+        public async Task<StockFundamental?> GetStockTradesAsync(string symbol)
+        {
+            string dbSymbol = SanitizeTicker(symbol);
+
+            return await _fundamentalCollection
+                .Find(s => s.Symbol == dbSymbol)
+                .Project<StockFundamental>(
+                    Builders<StockFundamental>
+                        .Projection.Include(s => s.Symbol)
+                        .Include(s => s.CompanyName)
+                        .Include(s => s.Trades)
+                        .Include(s => s.LastTradesUpdate)
+                )
+                .FirstOrDefaultAsync();
+        }
     }
 }
