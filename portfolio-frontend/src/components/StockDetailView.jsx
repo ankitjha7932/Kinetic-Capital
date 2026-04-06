@@ -123,12 +123,11 @@ export default function StockDetailView() {
         setNews(newsRes.data.slice(0, 7));
         setData(detRes.data);
         setShareholding(shRes.data);
-        if (peerRes.data) {
+        if (peerRes.data)
           setPeerData({
             industry: detRes.data.industry || peerRes.data.industry,
             peers: peerRes.data.peers || peerRes.data,
           });
-        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -189,7 +188,12 @@ export default function StockDetailView() {
         minute: "2-digit",
         hour12: true,
       });
-    return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+    // CHANGE: Added year to non-1d views
+    return date.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "2-digit",
+    });
   };
 
   if (loading && !data)
@@ -283,7 +287,7 @@ export default function StockDetailView() {
         <div className="flex items-start sm:items-center gap-3 sm:gap-4">
           <button
             onClick={() => navigate("/")}
-            className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+            className="p-2 hover:bg-slate-100 rounded-full transition-colors mt-1 sm:mt-0"
           >
             <ArrowLeft size={20} />
           </button>
@@ -301,7 +305,7 @@ export default function StockDetailView() {
               </button>
             </div>
             <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-1 uppercase truncate max-w-[200px] sm:max-w-none">
-              {data?.companyName || "Loading Asset Name..."}
+              {data?.companyName || "Loading..."}
             </p>
             <button
               onClick={() => navigate(`/strategy/${symbol}`)}
@@ -311,16 +315,16 @@ export default function StockDetailView() {
             </button>
           </div>
         </div>
-        <div className="w-full md:w-auto text-left md:text-right border-t md:border-0 pt-3 md:pt-0 flex flex-row md:flex-col justify-between items-center md:items-end">
+        <div className="w-full sm:w-auto text-left sm:text-right border-t sm:border-0 pt-3 sm:pt-0">
           <div
             className={`text-2xl sm:text-3xl md:text-4xl font-black ${isUp ? "text-emerald-600" : "text-rose-600"} tracking-tighter`}
           >
             ₹ {formatNum(data?.ratios?.currentPrice)}
           </div>
           <div
-            className={`flex items-center gap-1 text-xs sm:text-sm font-bold ${isUp ? "text-emerald-500" : "text-rose-500"}`}
+            className={`flex items-center sm:justify-end gap-1 text-xs sm:text-sm font-bold ${isUp ? "text-emerald-500" : "text-rose-500"}`}
           >
-            {isUp ? <TrendingUp size={16} /> : <TrendingDown size={16} />}{" "}
+            {isUp ? <TrendingUp size={14} /> : <TrendingDown size={14} />}{" "}
             {formatNum(data?.ratios?.priceChange)} (
             {formatNum(data?.ratios?.priceChangePercent)}%)
           </div>
@@ -330,34 +334,34 @@ export default function StockDetailView() {
       {/* RATIOS & NEWS GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-2 bg-white rounded-2xl p-4 sm:p-7 shadow-sm border border-slate-100 grid grid-cols-2 gap-y-4 gap-x-4 sm:gap-x-12 content-start">
-          <RatioItem label="Market Cap" value={`${data?.ratios?.marketCap}`} />
+          <RatioItem label="Market Cap" value={data?.ratios?.marketCap} />
           <RatioItem
             label="Price"
-            value={`₹ ${formatNum(data?.ratios?.currentPrice)}`}
+            value={`₹${formatNum(data?.ratios?.currentPrice)}`}
           />
           <RatioItem
-            label="52W High / Low"
-            value={`₹${formatNum(data?.ratios?.high52W)} / ${formatNum(data?.ratios?.low52W)}`}
+            label="52W H/L"
+            value={`${formatNum(data?.ratios?.high52W)} / ${formatNum(data?.ratios?.low52W)}`}
           />
-          <RatioItem label="Stock P/E" value={data?.ratios?.stockPE} />
+          <RatioItem label="P/E" value={data?.ratios?.stockPE} />
           <RatioItem
-            label="Dividend Yield"
+            label="Div Yield"
             value={`${data?.ratios?.dividendYield}%`}
           />
           <RatioItem
-            label="ROCE / ROE"
+            label="ROCE/ROE"
             value={`${data?.ratios?.roce} / ${data?.ratios?.roe}`}
           />
           <RatioItem
-            label="Historical High"
-            value={`₹ ${formatNum(data?.ratios?.historicalHigh)}`}
+            label="Hist. High"
+            value={`₹${formatNum(data?.ratios?.historicalHigh)}`}
           />
           <RatioItem label="Face Value" value={data?.ratios?.faceValue} />
         </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden max-h-[300px]">
-          <div className="p-3 border-b border-slate-50 flex items-center gap-2 bg-slate-50/50">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden h-[250px] sm:h-auto sm:max-h-[300px]">
+          <div className="p-3 sm:p-4 border-b border-slate-50 flex items-center gap-2 bg-slate-50/50">
             <Newspaper className="text-indigo-600" size={16} />
-            <h3 className="font-bold text-slate-800 text-xs uppercase">
+            <h3 className="font-bold text-slate-800 text-xs sm:text-sm uppercase">
               Latest News
             </h3>
           </div>
@@ -381,7 +385,7 @@ export default function StockDetailView() {
                     })}
                   </span>
                 </div>
-                <h4 className="text-[11px] font-bold text-slate-700 leading-snug line-clamp-2 group-hover:text-indigo-600">
+                <h4 className="text-[11px] font-bold text-slate-700 line-clamp-2">
                   {item.title}
                 </h4>
               </a>
@@ -390,8 +394,8 @@ export default function StockDetailView() {
         </div>
       </div>
 
-      {/* CHART SECTION: Dual Axis with Labels */}
-      <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-100">
+      {/* CHART SECTION */}
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-3 sm:p-6 shadow-sm border border-slate-100">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           <PeriodCard
             label="Period High"
@@ -413,19 +417,19 @@ export default function StockDetailView() {
           />
         </div>
 
-        <div className="flex flex-col lg:flex-row justify-between items-center mb-6 gap-4">
-          <div className="flex bg-slate-100 p-1 rounded-xl gap-1 overflow-x-auto w-full lg:w-auto no-scrollbar">
+        <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+          <div className="flex bg-slate-100 p-1 rounded-xl gap-1 overflow-x-auto w-full md:w-auto no-scrollbar">
             {["1d", "1w", "1m", "3m", "6m", "1y", "3y", "max"].map((f) => (
               <button
                 key={f}
                 onClick={() => setRange(f)}
-                className={`flex-shrink-0 px-3 sm:px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${range === f ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+                className={`flex-shrink-0 px-3 sm:px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${range === f ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400"}`}
               >
                 {f}
               </button>
             ))}
           </div>
-          <div className="flex gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100 overflow-x-auto w-full lg:w-auto no-scrollbar">
+          <div className="flex gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100 overflow-x-auto w-full md:w-auto no-scrollbar">
             <ToggleButton
               label="Volume"
               active={showVolumeAlways}
@@ -447,7 +451,8 @@ export default function StockDetailView() {
           </div>
         </div>
 
-        <div className="h-[300px] sm:h-[400px] md:h-[450px] w-full">
+        {/* CHANGE: Reduced height here */}
+        <div className="h-[250px] sm:h-[300px] md:h-[350px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={data?.chartData}
@@ -472,8 +477,6 @@ export default function StockDetailView() {
                 axisLine={false}
                 tickLine={false}
               />
-
-              {/* LEFT Y-AXIS: VOLUME */}
               <YAxis
                 yAxisId="vol"
                 orientation="left"
@@ -490,8 +493,6 @@ export default function StockDetailView() {
                   style: { fontSize: 9, fontWeight: 900, fill: "#cbd5e1" },
                 }}
               />
-
-              {/* RIGHT Y-AXIS: PRICE */}
               <YAxis
                 yAxisId="price"
                 orientation="right"
@@ -507,21 +508,14 @@ export default function StockDetailView() {
                   style: { fontSize: 9, fontWeight: 900, fill: "#cbd5e1" },
                 }}
               />
-
               <Tooltip
-                content={
-                  <CustomTooltip
-                    range={range}
-                    toggles={{ showDMA50, showDMA200 }}
-                  />
-                }
+                content={<CustomTooltip toggles={{ showDMA50, showDMA200 }} />}
                 cursor={{
                   stroke: "#94a3b8",
                   strokeWidth: 1,
                   strokeDasharray: "5 5",
                 }}
               />
-
               <Area
                 yAxisId="price"
                 type="monotone"
@@ -534,10 +528,10 @@ export default function StockDetailView() {
                 <Bar
                   yAxisId="vol"
                   dataKey="volume"
-                  fill="#6366f1" /* Vibrant Indigo */
-                  opacity={0.6} /* Higher opacity for "Bold" look */
-                  radius={[4, 4, 0, 0]} /* Slightly more rounded top */
-                  barSize={range === "1d" ? 6 : 15} /* Thicker bars */
+                  fill="#6366f1"
+                  opacity={0.6}
+                  radius={[4, 4, 0, 0]}
+                  barSize={range === "1d" ? 6 : 15}
                 />
               )}
               <Line
@@ -583,17 +577,17 @@ export default function StockDetailView() {
       )}
 
       <div className="space-y-6 pt-6">
-        <div className="flex bg-white p-1.5 rounded-xl shadow-sm border border-slate-100 gap-1 overflow-x-auto no-scrollbar w-full md:w-fit">
+        <div className="flex bg-white p-2.5 rounded-2xl shadow-md border border-slate-100 gap-2 overflow-x-auto no-scrollbar w-full md:w-fit">
           {[
-            { id: "quarters", label: "Quarters" },
+            { id: "quarters", label: "QUARTERS" },
             { id: "pl", label: "P&L" },
-            { id: "balance", label: "Balance" },
-            { id: "cash", label: "Cash" },
+            { id: "balance", label: "BALANCE" },
+            { id: "cash", label: "CASH" },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => toggleTable(tab.id)}
-              className={`whitespace-nowrap px-6 py-3.5 rounded-xl text-xs sm:text-sm font-black transition-all shadow-sm ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105" : "bg-slate-50 text-slate-400 hover:bg-slate-100"}`}
+              className={`whitespace-nowrap px-6 py-3.5 rounded-xl text-xs sm:text-sm font-black transition-all ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg scale-105" : "bg-slate-50 text-slate-400"}`}
             >
               {visibleTables[tab.id] ? <Eye size={12} /> : <EyeOff size={12} />}{" "}
               {tab.label}
@@ -651,7 +645,6 @@ export default function StockDetailView() {
   );
 }
 
-/* --- SUB-COMPONENTS --- */
 const RatioItem = ({ label, value }) => (
   <div className="flex justify-between items-center border-b border-slate-50 pb-2">
     <span className="text-slate-400 text-[10px] sm:text-xs font-medium uppercase tracking-tight">
@@ -696,6 +689,7 @@ const CustomTooltip = ({ active, payload, toggles }) => {
           {new Date(d.date).toLocaleDateString("en-IN", {
             day: "2-digit",
             month: "short",
+            year: "numeric",
           })}
         </p>
         <div className="space-y-1">
