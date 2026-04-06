@@ -477,7 +477,7 @@ export default function StockDetailView() {
               <YAxis
                 yAxisId="vol"
                 orientation="left"
-                domain={[0, (dataMax) => dataMax * 3]}
+                domain={[0, (dataMax) => dataMax * 1.2]}
                 tickFormatter={formatVolumeLabel}
                 tick={{ fontSize: 9, fill: "#6366f1" }}
                 axisLine={false}
@@ -534,10 +534,10 @@ export default function StockDetailView() {
                 <Bar
                   yAxisId="vol"
                   dataKey="volume"
-                  fill="#6366f1"
-                  opacity={0.3}
-                  radius={[2, 2, 0, 0]}
-                  barSize={range === "1d" ? 2 : 6}
+                  fill="#6366f1" /* Vibrant Indigo */
+                  opacity={0.6} /* Higher opacity for "Bold" look */
+                  radius={[4, 4, 0, 0]} /* Slightly more rounded top */
+                  barSize={range === "1d" ? 6 : 15} /* Thicker bars */
                 />
               )}
               <Line
