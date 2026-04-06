@@ -33,19 +33,67 @@ public class StockFundamental
     public List<FinancialRow> BalanceSheet { get; set; } = new();
     public List<FinancialRow> CashFlow { get; set; } = new();
 
-    // --- UPDATED PART ---
-    // Making these nullable (?) is critical for MongoDB backward compatibility
     [BsonElement("PeersData")]
     public List<PeerData>? PeersData { get; set; } = new();
 
     [BsonElement("PeerSymbols")]
     public List<string>? PeerSymbols { get; set; } = new();
-    // --------------------
 
     public List<ShareholdingData> Shareholding { get; set; } = new();
     public List<ShareholdingData> ShareholdingYearly { get; set; } = new();
+
     public string ScreenerId { get; set; } = string.Empty;
+
+    [BsonElement("TradeId")]
+    public string? TradeId { get; set; }
+
+    public TradesContainer? Trades { get; set; }
+
     public DateTime? LastUpserted { get; set; }
+
+    public DateTime? LastTradesUpdate { get; set; }
+}
+
+[BsonIgnoreExtraElements]
+public class TradesContainer
+{
+    public List<InsiderTrade> Insider { get; set; } = new();
+    public List<BulkBlockTrade> Bulk { get; set; } = new();
+    public List<BulkBlockTrade> Block { get; set; } = new();
+
+    [BsonElement("Sast")]
+    public List<SignificantOwnershipTrade> Sast { get; set; } = new();
+}
+
+[BsonIgnoreExtraElements]
+public class InsiderTrade
+{
+    public string Date { get; set; } = string.Empty;
+    public string Person { get; set; } = string.Empty;
+    public string Quantity { get; set; } = string.Empty;
+    public string AvgPrice { get; set; } = string.Empty;
+    public string ValueLacs { get; set; } = string.Empty;
+}
+
+[BsonIgnoreExtraElements]
+public class BulkBlockTrade
+{
+    public string Date { get; set; } = string.Empty;
+    public string Person { get; set; } = string.Empty;
+    public string Action { get; set; } = string.Empty;
+    public string Quantity { get; set; } = string.Empty;
+    public string Price { get; set; } = string.Empty;
+}
+
+[BsonIgnoreExtraElements]
+public class SignificantOwnershipTrade
+{
+    public string Date { get; set; } = string.Empty;
+    public string Person { get; set; } = string.Empty;
+    public string Transaction { get; set; } = string.Empty;
+    public string Mode { get; set; } = string.Empty;
+    public string Quantity { get; set; } = string.Empty;
+    public string Percent { get; set; } = string.Empty;
 }
 
 [BsonIgnoreExtraElements]
@@ -63,6 +111,7 @@ public class PeerData
     public string ROCE { get; set; } = string.Empty;
 }
 
+[BsonIgnoreExtraElements]
 public class ShareholdingData
 {
     public string Category { get; set; } = string.Empty;

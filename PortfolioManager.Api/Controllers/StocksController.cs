@@ -110,25 +110,27 @@ namespace PortfolioManager.Api.Controllers
             if (stock == null || stock.Shareholding == null || !stock.Shareholding.Any())
                 return NotFound();
 
-            var quarters = stock.Shareholding.First().Values.Keys.ToList();
-            var latestQuarter = quarters.Last();
+            var quartersList = stock.Shareholding.First().Values.Keys.ToList();
+            var latest = quartersList.Last();
 
             var pieData = stock
-                .Shareholding.Where(s => !s.Category.Contains("Shareholders"))
+                .Shareholding.Where(s =>
+                    !s.Category.Contains("Shareholders", StringComparison.OrdinalIgnoreCase)
+                )
                 .Select(s => new
                 {
                     name = s.Category,
-                    value = double.TryParse(s.Values[latestQuarter], out var v) ? v : 0,
+                    value = double.TryParse(s.Values.GetValueOrDefault(latest), out var v) ? v : 0,
                 })
                 .ToList();
 
             return Ok(
                 new
                 {
-                    Quarters = quarters,
-                    History = stock.Shareholding,
-                    PieData = pieData,
-                    LatestQuarterName = latestQuarter,
+                    quarters = quartersList,
+                    history = stock.Shareholding,
+                    pieData = pieData,
+                    latestQuarterName = latest,
                 }
             );
         }
@@ -148,6 +150,51 @@ namespace PortfolioManager.Api.Controllers
             }
 
             return Ok(peerData);
+        }
+
+        [HttpGet("recent-insider-activity")]
+        public async Task<IActionResult> GetRecentInsiderActivity()
+        {
+            var filter = Builders<StockFundamental>.Filter.And(
+                Builders<StockFundamental>.Filter.Exists(s => s.Trades.Insider),
+                Builders<StockFundamental>.Filter.Not(
+                    Builders<StockFundamental>.Filter.Size(s => s.Trades.Insider, 0)
+                )
+            );
+
+            var recentStocks = await _fundamentalCollection
+                .Find(filter)
+                .SortByDescending(s => s.LastTradesUpdate)
+                .Limit(10)
+                .Project(s => new
+                {
+                    s.Symbol,
+                    s.CompanyName,
+                    InsiderCount = s.Trades.Insider.Count,
+                })
+                .ToListAsync();
+
+            return Ok(recentStocks);
+        }
+
+        [HttpGet("{symbol}/trades")]
+        public async Task<IActionResult> GetTrades(string symbol)
+        {
+            string ticker = SanitizeTicker(symbol);
+            var stockTrades = await _detailsService.GetStockTradesAsync(ticker);
+
+            if (stockTrades == null)
+                return NotFound(new { message = $"No trade data found for {symbol}" });
+
+            return Ok(
+                new
+                {
+                    Symbol = stockTrades.Symbol,
+                    CompanyName = stockTrades.CompanyName,
+                    Trades = stockTrades.Trades ?? new TradesContainer(),
+                    LastUpdate = stockTrades.LastTradesUpdate,
+                }
+            );
         }
 
         private string SanitizeTicker(string s) =>
