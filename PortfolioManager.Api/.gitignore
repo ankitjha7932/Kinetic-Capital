@@ -32,3 +32,7 @@ Thumbs.db
 # --- LOGS ---
 *.log
 logs/
+
+# --- CUSTOM SCRIPT FOLDERS ---
+script/
+scripts/
