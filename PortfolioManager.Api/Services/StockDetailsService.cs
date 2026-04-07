@@ -83,7 +83,8 @@ namespace PortfolioManager.Api.Services
                 "6m" => ("2y", "6month"),
                 "1y" => ("3y", "year"),
                 "3y" => ("5y", "3year"),
-                _ => ("3y", "year"),
+                "max" => ("max", "max"), // Added explicit support for max
+                _ => ("max", "max"), // Default to max to ensure data is always available
             };
 
             var historyTask = _priceService.GetHistoricalDataAsync(dbSymbol, fetchRange);
@@ -113,7 +114,8 @@ namespace PortfolioManager.Api.Services
                 "6month" => istNow.AddMonths(-6),
                 "year" => istNow.AddMonths(-12),
                 "3year" => istNow.AddMonths(-36),
-                _ => istNow.AddMonths(-12),
+                "max" => DateTime.MinValue, // Ensure MinValue is used so no data is filtered out
+                _ => DateTime.MinValue,
             };
 
             var allPrices = history.Prices.OrderBy(p => p.Date).ToList();
