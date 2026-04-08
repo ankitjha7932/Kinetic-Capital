@@ -85,21 +85,37 @@ namespace PortfolioManager.Api.Controllers
         public async Task<IActionResult> GetAnalysis(string symbol)
         {
             string ticker = SanitizeTicker(symbol);
-            var resultObj = await _detailsService.GetStockDetailsAsync(ticker, "1y");
-
-            if (resultObj == null)
-                return NotFound(new { message = "Stock data not found" });
 
             try
             {
-                var analysis = _analysisService.AnalyzeStock((StockDetails)resultObj);
+                // 1. Fetch both Stock Details and Trades (Bulk/Block deals) in parallel for efficiency
+                var detailsTask = _detailsService.GetStockDetailsAsync(ticker, "1y");
+                var tradesTask = _detailsService.GetStockTradesAsync(ticker);
+
+                await Task.WhenAll(detailsTask, tradesTask);
+
+                var details = await detailsTask;
+                var tradesData = await tradesTask;
+
+                // 2. Validate essential data
+                if (details == null)
+                    return NotFound(new { message = "Stock data not found" });
+
+                // 3. Run the updated analysis logic passing both datasets
+                // This ensures the 'Smart Money' pillar is no longer "Missing"
+                var analysis = _analysisService.AnalyzeStock(details, tradesData);
+
                 return analysis != null
                     ? Ok(analysis)
-                    : BadRequest(new { message = "Analysis failed" });
+                    : BadRequest(new { message = "Analysis calculation failed" });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = "Analysis failed", details = ex.Message });
+                // Log the exception here if you have a logger
+                return StatusCode(
+                    500,
+                    new { error = "Internal server error during analysis", details = ex.Message }
+                );
             }
         }
 

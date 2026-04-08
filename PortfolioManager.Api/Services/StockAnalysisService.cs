@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using PortfolioManager.Api.Models;
 
@@ -7,113 +8,143 @@ namespace PortfolioManager.Api.Services
 {
     public interface IStockAnalysisService
     {
-        StockAnalysisResult AnalyzeStock(StockDetails details);
+        StockAnalysisResult AnalyzeStock(StockDetails details, StockFundamental tradesData = null);
     }
 
     public class StockAnalysisService : IStockAnalysisService
     {
-        public StockAnalysisResult AnalyzeStock(StockDetails details)
+        public StockAnalysisResult AnalyzeStock(StockDetails d, StockFundamental tradesData = null)
         {
-            if (details?.ChartData == null || !details.ChartData.Any())
+            if (d?.ChartData == null || !d.ChartData.Any())
                 return new StockAnalysisResult { Sentiment = "Insufficient Data", Score = 0 };
 
-            var result = new StockAnalysisResult
+            var res = new StockAnalysisResult
             {
-                Symbol = details.Symbol,
+                Symbol = d.Symbol,
                 Reasons = new List<string>(),
+                Breakdown = new List<ScoreBreakdown>(),
                 PerformanceMatrix = new Dictionary<string, string>(),
                 GeneratedAt = DateTime.UtcNow,
             };
 
-            // --- 4-PILLAR WEIGHTED MODEL (Total 100%) ---
-            double techScore = CalculateTechnicalScore(details, result); // Max 25%
-            double finScore = CalculateFinancialScore(details, result); // Max 30%
-            double shScore = CalculateShareholdingScore(details, result); // Max 25%
-            double newsScore = CalculateNewsScore(details, result); // Max 20%
+            double techRaw = CalculateTechnicalScore(d, res);
+            double finRaw = CalculateFinancialScore(d, res);
+            double shRaw = CalculateShareholdingScore(d, res);
+            double smartRaw = CalculateSmartMoney(tradesData, res);
+            double newsRaw = CalculateNewsScore(d, res);
 
-            result.Score = (int)Math.Min(techScore + finScore + shScore + newsScore, 100);
+            double tech = (techRaw / 50.0) * 30.0;
+            double fin = Math.Clamp(finRaw, 0, 30);
+            double sh = Math.Clamp(shRaw, 0, 15);
+            double smart = Math.Clamp(smartRaw, 0, 10);
+            double news = Math.Clamp(newsRaw, 0, 15);
 
-            // --- POPULATE PERFORMANCE MATRIX ---
-            result.PerformanceMatrix["Chart Setup"] = $"{Math.Round(techScore / 25 * 100)}%";
-            result.PerformanceMatrix["Financials"] = $"{Math.Round(finScore / 30 * 100)}%";
+            res.Score = (int)Math.Clamp(Math.Round(tech + fin + sh + smart + news), 0, 100);
 
-            // Only show Ownership percentage string if data exists
-            if (!result.PerformanceMatrix.ContainsKey("Ownership Score"))
-                result.PerformanceMatrix["Ownership Score"] = $"{Math.Round(shScore / 25 * 100)}%";
+            res.PerformanceMatrix["Technicals"] = $"{Math.Round(techRaw / 50 * 100)}%";
+            res.PerformanceMatrix["Financials"] = $"{Math.Round(fin / 30 * 100)}%";
+            res.PerformanceMatrix["Ownership"] = $"{Math.Round(sh / 15 * 100)}%";
+            res.PerformanceMatrix["Smart Money"] = $"{Math.Round(smart / 10 * 100)}%";
+            res.PerformanceMatrix["Sentiment"] = $"{Math.Round(news / 15 * 100)}%";
 
-            result.PerformanceMatrix["Market Buzz"] = $"{Math.Round(newsScore / 20 * 100)}%";
-
-            // Logic-Based Sentiment Mapping
-            result.Sentiment = result.Score switch
+            res.Sentiment = res.Score switch
             {
-                >= 80 => "Strong Buy / High Confidence",
-                >= 65 => "Positive Momentum / Accumulate",
-                >= 45 => "Neutral / Consolidation",
-                >= 25 => "Caution / Negative Sentiment",
-                _ => "Avoid / High Risk",
+                >= 85 => "Exceptionally Good / Elite",
+                >= 70 => "Strong Bullish / High Conviction",
+                >= 50 => "Bullish / Accumulate",
+                >= 35 => "Neutral / Consolidation",
+                >= 20 => "Caution / Weak Structure",
+                _ => "Negative / High Risk",
             };
 
-            return result;
+            return res;
         }
 
-        private double CalculateTechnicalScore(StockDetails details, StockAnalysisResult res)
+        // ---------------- TECHNICAL ----------------
+        private double CalculateTechnicalScore(StockDetails d, StockAnalysisResult res)
         {
-            double score = 12.5; // 50% Milestone base
-            var latest = details.ChartData.Last();
+            double score = 0;
+            var last = d.ChartData.Last();
+            double price = (double)last.Price;
+            double dma50 = (double)(last.DmA50 ?? 0);
+            double dma200 = (double)(last.DmA200 ?? 0);
 
-            if (latest.Price > latest.DmA200)
+            if (dma50 > 0)
             {
-                score += 6.25;
-                res.Reasons.Add("Trend: Holding above 200-day long-term support.");
-            }
-            if (latest.Price > latest.DmA50)
-            {
-                score += 6.25;
-                res.Reasons.Add("Momentum: Trading above short-term 50-day average.");
-            }
-
-            return Math.Clamp(score, 0, 25);
-        }
-
-        private double CalculateFinancialScore(StockDetails details, StockAnalysisResult res)
-        {
-            double score = 15; // 50% Milestone base
-            try
-            {
-                var sales = details.ProfitAndLoss.FirstOrDefault(r => r.Metric.Contains("Sales"));
-                var profit = details.ProfitAndLoss.FirstOrDefault(r =>
-                    r.Metric.Contains("Net Profit")
+                double pct50 = (price - dma50) / dma50 * 100;
+                double s50 = pct50 >= 0 ? 15 : Math.Max(1, 15 + (pct50 * 1.2));
+                score += s50;
+                Add(
+                    res,
+                    "Technical",
+                    "50 DMA",
+                    $"{pct50:0.0}%",
+                    s50,
+                    pct50 >= 0 ? $"Price above 50 DMA" : $"Below 50 DMA"
                 );
-
-                if (sales != null && IsGrowthDetected(sales))
-                {
-                    score += 7.5;
-                    res.Reasons.Add("Growth: Annual revenue is trending upwards.");
-                }
-                if (profit != null && IsGrowthDetected(profit))
-                {
-                    score += 7.5;
-                    res.Reasons.Add("Earnings: The company is reporting consistent profits.");
-                }
             }
-            catch { }
+
+            if (dma50 > 0 && dma200 > dma50 && price > dma50)
+            {
+                double progress = (price - dma50) / (dma200 - dma50);
+                double sRange = Math.Clamp(progress * 15, 0, 15);
+                score += sRange;
+                Add(
+                    res,
+                    "Technical",
+                    "Trend Progress",
+                    $"{progress * 100:0.0}%",
+                    sRange,
+                    "Moving towards 200 DMA"
+                );
+            }
+
+            if (dma200 > 0 && price > dma200)
+            {
+                double pct200 = (price - dma200) / dma200 * 100;
+                double bonus = Math.Min(10, pct200 / 2);
+                score += bonus;
+                Add(res, "Technical", "200 DMA", $"{pct200:0.0}%", bonus, "Strong long-term trend");
+            }
+
+            return Math.Clamp(score, 0, 50);
+        }
+
+        // ---------------- FINANCIAL ----------------
+        private double CalculateFinancialScore(StockDetails d, StockAnalysisResult res)
+        {
+            double score = 0;
+            var sales = GetPnlValues(d, "Sales");
+            var profit = GetPnlValues(d, "Net Profit");
+
+            if (IsGrowing(sales))
+            {
+                score += 10;
+                Add(res, "Financial", "Revenue", "Growing", 10, "Revenue increasing");
+            }
+
+            if (IsGrowing(profit))
+            {
+                score += 10;
+                Add(res, "Financial", "Profit", "Growing", 10, "Profit increasing");
+            }
+
             return Math.Clamp(score, 0, 30);
         }
 
-        private double CalculateShareholdingScore(StockDetails details, StockAnalysisResult res)
+        // ---------------- SHAREHOLDING (UPDATED) ----------------
+        private double CalculateShareholdingScore(StockDetails d, StockAnalysisResult res)
         {
-            if (details.Shareholding == null || !details.Shareholding.Any())
-                return 12.5;
+            double score = 7;
 
             try
             {
-                // 1. Get 1-Year Deltas (Comparing Latest vs 4 Quarters Ago)
-                var promoter = GetYearlyDeltas(details, "Promoter");
-                var fii = GetYearlyDeltas(details, "FII");
-                var dii = GetYearlyDeltas(details, "DII");
-                var retail = GetYearlyDeltas(details, "Public");
+                var promoter = GetShDelta(d, "Promoters");
+                var fii = GetShDelta(d, "FII");
+                var dii = GetShDelta(d, "DII");
+                var retail = GetShDelta(d, "Public");
 
-                // 2. Identify the Handover Story (Biggest Seller ➔ Biggest Buyer)
+                // 🔥 HANDOVER LOGIC
                 var deltas = new Dictionary<string, decimal>
                 {
                     { "Promoters", promoter.delta },
@@ -127,130 +158,230 @@ namespace PortfolioManager.Api.Services
 
                 if (majorSeller.Value < -0.5m)
                 {
-                    decimal amountSold = Math.Abs(majorSeller.Value);
-                    decimal absorptionRate = (majorBuyer.Value / amountSold) * 100;
+                    decimal sold = Math.Abs(majorSeller.Value);
+                    decimal absorption = majorBuyer.Value > 0 ? (majorBuyer.Value / sold) * 100 : 0;
 
                     res.PerformanceMatrix["Handover"] = $"{majorSeller.Key} ➔ {majorBuyer.Key}";
                     res.PerformanceMatrix["Absorption"] =
-                        $"{Math.Min(100, Math.Round(absorptionRate))}%";
-                    res.Reasons.Add(
-                        $"Yearly Story: {majorSeller.Key} exited {amountSold}%, which was {Math.Round(Math.Min(100, absorptionRate))}% absorbed by {majorBuyer.Key}."
+                        $"{Math.Min(100, Math.Round(absorption))}%";
+
+                    Add(
+                        res,
+                        "Ownership",
+                        "Handover",
+                        $"{majorSeller.Key} ➔ {majorBuyer.Key}",
+                        2,
+                        $"{majorSeller.Key} exited {sold:0.00}%, absorbed by {majorBuyer.Key}"
                     );
                 }
 
-                // 3. Magnitude Sentiment Math
-                double magnitudeSentiment = 0;
-                bool isProfManaged = (promoter.latest == 0 || promoter.latest < 0.01m);
-
-                if (isProfManaged)
+                // Promoter logic
+                if (promoter.delta > 0)
                 {
-                    magnitudeSentiment +=
-                        (double)fii.delta * 5.0
-                        + (double)dii.delta * 3.5
-                        + (double)retail.delta * -2.5;
+                    score += 4;
+                    Add(
+                        res,
+                        "Ownership",
+                        "Promoters",
+                        "Buying",
+                        4,
+                        $"Stake increased {promoter.delta:0.00}%"
+                    );
+                }
+                else if (promoter.delta < -1)
+                {
+                    score -= 5;
+                    Add(
+                        res,
+                        "Ownership",
+                        "Promoters",
+                        "Selling",
+                        -5,
+                        $"Stake reduced {Math.Abs(promoter.delta):0.00}%"
+                    );
                 }
                 else
                 {
-                    res.PerformanceMatrix["Promoter Stake"] = $"{promoter.latest}%";
-                    magnitudeSentiment +=
-                        (double)promoter.delta * 8.0
-                        + (double)fii.delta * 4.0
-                        + (double)dii.delta * 2.5
-                        + (double)retail.delta * -2.0;
+                    Add(res, "Ownership", "Promoters", "Stable", 0, "Holding stable");
                 }
 
-                return Math.Clamp(12.5 + magnitudeSentiment, 0, 25);
+                res.PerformanceMatrix["Promoter Stake"] = $"{promoter.latest:0.00}%";
             }
-            catch
+            catch { }
+
+            return Math.Clamp(score, 0, 15);
+        }
+
+        // ---------------- SMART MONEY ----------------
+        private double CalculateSmartMoney(StockFundamental data, StockAnalysisResult res)
+        {
+            if (data?.Trades == null)
             {
-                return 12.5;
+                Add(
+                    res,
+                    "Smart Money",
+                    "Activity",
+                    "No Data",
+                    0,
+                    "No institutional activity detected"
+                );
+                return 5; // Neutral baseline
             }
+
+            double score = 5; // Neutral base
+
+            var trades = data.Trades.Sast ?? new List<SignificantOwnershipTrade>();
+
+            if (!trades.Any())
+            {
+                Add(
+                    res,
+                    "Smart Money",
+                    "SAST",
+                    "Neutral",
+                    0,
+                    "No major block deals or disclosures"
+                );
+                return score;
+            }
+
+            int buys = 0,
+                sells = 0;
+
+            foreach (var t in trades)
+            {
+                var trans = t?.Transaction?.ToUpper() ?? "";
+
+                if (trans.Contains("ACQ") || trans.Contains("BUY"))
+                {
+                    buys++;
+                    score += 1.5;
+                }
+                else if (trans.Contains("SALE") || trans.Contains("SELL"))
+                {
+                    sells++;
+                    score -= 1.5;
+                }
+            }
+
+            // Clamp final score
+            score = Math.Clamp(score, 0, 10);
+
+            // Add one clean summary reason (avoids duplicates)
+            if (buys > sells)
+            {
+                Add(
+                    res,
+                    "Smart Money",
+                    "Flow",
+                    $"Buy:{buys} Sell:{sells}",
+                    score - 5,
+                    "Institutional accumulation detected"
+                );
+            }
+            else if (sells > buys)
+            {
+                Add(
+                    res,
+                    "Smart Money",
+                    "Flow",
+                    $"Buy:{buys} Sell:{sells}",
+                    score - 5,
+                    "Institutional distribution / exit observed"
+                );
+            }
+            else
+            {
+                Add(
+                    res,
+                    "Smart Money",
+                    "Flow",
+                    $"Buy:{buys} Sell:{sells}",
+                    0,
+                    "Balanced institutional activity"
+                );
+            }
+
+            res.PerformanceMatrix["Smart Flow"] =
+                buys > sells ? "Accumulation"
+                : sells > buys ? "Distribution"
+                : "Neutral";
+
+            return score;
         }
 
-        // --- HELPERS ---
-
-        private bool IsGrowthDetected(FinancialRow row)
+        // ---------------- NEWS ----------------
+        private double CalculateNewsScore(StockDetails d, StockAnalysisResult res)
         {
-            var vals = row
-                .Values.Values.Select(v => decimal.TryParse(v.Replace(",", ""), out var d) ? d : 0)
-                .ToList();
-            return vals.Count >= 2 && vals.Last() > vals[vals.Count - 2];
+            if (d?.News == null || !d.News.Any())
+                return 7.5;
+            return 7.5;
         }
 
-        private (decimal latest, decimal delta) GetYearlyDeltas(
-            StockDetails details,
-            string categoryName
-        )
+        // ---------------- HELPERS ----------------
+        private void Add(StockAnalysisResult res, string p, string m, string v, double i, string e)
         {
-            var row = details.Shareholding.FirstOrDefault(s =>
-                s.Category.Contains(categoryName, StringComparison.OrdinalIgnoreCase)
+            double impact = Math.Round(i, 1);
+
+            res.Breakdown.Add(
+                new ScoreBreakdown
+                {
+                    Pillar = p,
+                    Metric = m,
+                    Value = v,
+                    Impact = impact,
+                    Explanation = e,
+                }
             );
-            if (row == null || !row.Values.Any())
-                return (0, 0);
 
-            var vals = row
-                .Values.Values.Select(v =>
-                    decimal.TryParse(v.Replace("%", "").Replace(",", "").Trim(), out var d) ? d : 0
-                )
-                .ToList();
-
-            if (vals.Count < 1)
-                return (0, 0);
-            if (vals.Count < 2)
-                return (vals.Last(), 0);
-
-            decimal latest = vals.Last();
-            // Look back 4 steps (1 year). If data is shorter, compare with the oldest record.
-            int lookbackIndex = Math.Max(0, vals.Count - 5);
-            decimal yearAgoValue = vals[lookbackIndex];
-
-            return (latest, latest - yearAgoValue);
+            // ✅ NO DUPLICATE REASONS FIX
+            var reasonText = $"{m}: {e}";
+            if (!res.Reasons.Contains(reasonText))
+            {
+                res.Reasons.Add($"{reasonText} (Impact: {impact})");
+            }
         }
 
-        private double CalculateNewsScore(StockDetails details, StockAnalysisResult res)
+        private List<decimal> GetPnlValues(StockDetails d, string metric)
         {
-            if (details.News == null || !details.News.Any())
-                return 10;
-            int bull = 0,
-                bear = 0;
-            string[] bullWords =
-            {
-                "buy",
-                "upgrade",
-                "target",
-                "profit",
-                "growth",
-                "dividend",
-                "order",
-                "acquisition",
-                "deal",
-            };
-            string[] bearWords =
-            {
-                "sell",
-                "downgrade",
-                "loss",
-                "debt",
-                "investigation",
-                "fine",
-                "scam",
-                "warning",
-                "fall",
-            };
+            var row = d?.ProfitAndLoss?.FirstOrDefault(r =>
+                r.Metric.Contains(metric, StringComparison.OrdinalIgnoreCase)
+            );
+            return row?.Values?.Values.Select(v => SafeParseDecimal(v)).ToList()
+                ?? new List<decimal>();
+        }
 
-            foreach (var n in details.News)
-            {
-                var t = n.Title.ToLower();
-                if (bullWords.Any(w => t.Contains(w)))
-                    bull++;
-                if (bearWords.Any(w => t.Contains(w)))
-                    bear++;
-            }
-            if (bull > bear)
-                return 15; // 75%
-            if (bear > bull)
-                return 5; // 25%
-            return 10; // 50%
+        private decimal SafeParseDecimal(string val)
+        {
+            if (string.IsNullOrWhiteSpace(val))
+                return 0;
+            decimal.TryParse(
+                val.Replace(",", ""),
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out var r
+            );
+            return r;
+        }
+
+        private bool IsGrowing(List<decimal> vals) =>
+            vals.Count >= 2 && vals.Last() > vals[vals.Count - 2];
+
+        private (decimal latest, decimal delta) GetShDelta(StockDetails d, string cat)
+        {
+            var row = d?.Shareholding?.FirstOrDefault(s =>
+                s.Category.Contains(cat, StringComparison.OrdinalIgnoreCase)
+            );
+
+            if (row?.Values == null)
+                return (0, 0);
+
+            var vals = row.Values.Values.Select(v => SafeParseDecimal(v.Replace("%", ""))).ToList();
+
+            if (vals.Count < 2)
+                return (vals.LastOrDefault(), 0);
+
+            return (vals.Last(), vals.Last() - vals[vals.Count - 2]);
         }
     }
 }

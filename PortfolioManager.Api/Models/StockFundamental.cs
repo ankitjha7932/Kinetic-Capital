@@ -47,18 +47,25 @@ public class StockFundamental
     [BsonElement("TradeId")]
     public string? TradeId { get; set; }
 
+    [BsonElement("Trades")]
     public TradesContainer? Trades { get; set; }
 
     public DateTime? LastUpserted { get; set; }
 
+    [BsonElement("LastTradesUpdate")]
     public DateTime? LastTradesUpdate { get; set; }
 }
 
 [BsonIgnoreExtraElements]
 public class TradesContainer
 {
+    [BsonElement("Insider")]
     public List<InsiderTrade> Insider { get; set; } = new();
+
+    [BsonElement("Bulk")]
     public List<BulkBlockTrade> Bulk { get; set; } = new();
+
+    [BsonElement("Block")]
     public List<BulkBlockTrade> Block { get; set; } = new();
 
     [BsonElement("Sast")]

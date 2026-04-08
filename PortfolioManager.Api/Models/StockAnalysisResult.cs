@@ -64,8 +64,18 @@ namespace PortfolioManager.Api.Models
         public string Symbol { get; set; } = string.Empty;
         public string Sentiment { get; set; } = string.Empty;
         public int Score { get; set; }
+        public List<ScoreBreakdown> Breakdown { get; set; } = new();
         public List<string> Reasons { get; set; } = new();
         public Dictionary<string, string> PerformanceMatrix { get; set; } = new();
         public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
+    }
+
+    public class ScoreBreakdown
+    {
+        public string Pillar { get; set; } // e.g., "Technicals"
+        public string Metric { get; set; } // e.g., "Bulk Deals"
+        public string Value { get; set; } // e.g., "2 Buys detected"
+        public double Impact { get; set; } // e.g., +5.0
+        public string Explanation { get; set; } // e.g., "Smart money is accumulating"
     }
 }
