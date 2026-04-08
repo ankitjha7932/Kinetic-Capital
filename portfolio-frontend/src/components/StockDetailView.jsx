@@ -14,8 +14,6 @@ import {
 import {
   Loader2,
   ArrowLeft,
-  TrendingUp,
-  TrendingDown,
   Newspaper,
   Zap,
   X,
@@ -23,9 +21,8 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  ArrowUp,
-  ArrowDown,
   Activity,
+  Info,
 } from "lucide-react";
 import api from "../api/axios";
 import FinancialTable from "./FinancialTable";
@@ -52,6 +49,8 @@ export default function StockDetailView() {
   const [isTradeModalOpen, setIsTradeModalOpen] = useState(false);
   const [trades, setTrades] = useState(null);
 
+  const [activeInfoKey, setActiveInfoKey] = useState(null);
+
   const [visibleTables, setVisibleTables] = useState({
     quarters: true,
     pl: false,
@@ -64,44 +63,46 @@ export default function StockDetailView() {
   const [showVolumeAlways, setShowVolumeAlways] = useState(true);
 
   const getSentimentConfig = (score) => {
-    if (score >= 80)
+    if (score >= 70) 
       return {
-        bg: "bg-emerald-600",
-        text: "text-emerald-600",
+        bg: "bg-emerald-900",
+        text: "text-emerald-900",
         light: "bg-emerald-50",
-        border: "border-emerald-200",
-        icon: <TrendingUp size={16} />,
+        border: "border-emerald-300",
       };
-    if (score >= 65)
+    if (score >= 55) 
+      return {
+        bg: "bg-emerald-700",
+        text: "text-emerald-700",
+        light: "bg-emerald-50/70",
+        border: "border-emerald-200",
+      };
+    if (score >= 45) 
       return {
         bg: "bg-emerald-400",
         text: "text-emerald-500",
-        light: "bg-emerald-50/50",
+        light: "bg-emerald-50/40",
         border: "border-emerald-100",
-        icon: <TrendingUp size={16} />,
       };
-    if (score >= 45)
+    if (score >= 35) 
       return {
-        bg: "bg-amber-500",
+        bg: "bg-amber-400",
         text: "text-amber-600",
         light: "bg-amber-50",
         border: "border-amber-200",
-        icon: <Activity size={16} />,
       };
-    if (score >= 25)
+    if (score >= 20) 
       return {
         bg: "bg-rose-400",
         text: "text-rose-500",
         light: "bg-rose-50/50",
         border: "border-rose-100",
-        icon: <TrendingDown size={16} />,
       };
-    return {
-      bg: "bg-rose-700",
-      text: "text-rose-700",
+    return { 
+      bg: "bg-rose-900",
+      text: "text-rose-900",
       light: "bg-rose-50",
-      border: "border-rose-200",
-      icon: <AlertCircle size={16} />,
+      border: "border-rose-300",
     };
   };
 
@@ -172,12 +173,14 @@ export default function StockDetailView() {
 
   const isUp = data?.ratios?.priceChange >= 0;
   const isPeriodPositive = data?.periodReturn >= 0;
+
   const themeColor = sentiment.text
-    .replace("emerald-600", "059669")
+    .replace("emerald-900", "064e3b")
+    .replace("emerald-700", "047857")
     .replace("emerald-500", "10b981")
     .replace("amber-600", "d97706")
     .replace("rose-500", "f43f5e")
-    .replace("rose-700", "be123c")
+    .replace("rose-900", "881337")
     .replace("text-", "#");
 
   const renderDateTick = (tickItem) => {
@@ -188,7 +191,6 @@ export default function StockDetailView() {
         minute: "2-digit",
         hour12: true,
       });
-    // CHANGE: Added year to non-1d views
     return date.toLocaleDateString("en-IN", {
       day: "2-digit",
       month: "short",
@@ -205,77 +207,84 @@ export default function StockDetailView() {
 
   return (
     <div className="w-full max-w-7xl mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6 bg-slate-50 min-h-screen font-sans relative pb-20 overflow-x-hidden">
-      {/* ANALYSIS MODAL */}
+      
+      {/* OPTIMIZED ANALYSIS MODAL - SMALLER AND MORE MODERN */}
       {isAnalysisModalOpen && analysis && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
             onClick={() => setIsAnalysisModalOpen(false)}
           />
-          <div className="relative bg-white w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden border border-slate-100">
-            <div className={`h-2.5 w-full ${sentiment.bg}`} />
+          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 animate-in fade-in zoom-in duration-300">
+            <div className={`h-2 w-full ${sentiment.bg}`} />
             <div className="p-6 sm:p-8">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                    Intelligence Core
-                  </p>
-                  <h2
-                    className={`text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2 ${sentiment.text}`}
-                  >
+                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5">Intelligence Core</p>
+                  <h2 className={`text-xl sm:text-2xl font-extrabold tracking-tight leading-tight ${sentiment.text}`}>
                     {analysis.sentiment}
                   </h2>
                 </div>
-                <button
-                  onClick={() => setIsAnalysisModalOpen(false)}
-                  className="p-2 hover:bg-slate-100 rounded-full text-slate-400"
+                <button 
+                  onClick={() => setIsAnalysisModalOpen(false)} 
+                  className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"
                 >
                   <X size={20} />
                 </button>
               </div>
-              <div className="mb-8 bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-100">
-                <div className="flex justify-between items-end mb-2">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-tight">
-                    Confidence Index
-                  </span>
-                  <span
-                    className={`text-xl sm:text-2xl font-black ${sentiment.text}`}
-                  >
-                    {analysis.score}%
-                  </span>
+
+              <div className="mb-8 bg-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-100 shadow-inner">
+                <div className="flex justify-between items-end mb-3">
+                  <span className="text-sm font-black text-slate-500 uppercase tracking-widest">Confidence Index</span>
+                  <span className={`text-3xl sm:text-4xl font-extrabold ${sentiment.text}`}>{analysis.score}%</span>
                 </div>
-                <div className="h-2 w-full bg-white rounded-full overflow-hidden border border-slate-200/50">
-                  <div
-                    className={`h-full transition-all duration-1000 ${sentiment.bg}`}
-                    style={{ width: `${analysis.score}%` }}
-                  />
+                <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200/50 shadow-sm">
+                  <div className={`h-full transition-all duration-1000 ${sentiment.bg}`} style={{ width: `${analysis.score}%` }} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3 mb-8">
-                {Object.entries(analysis.performanceMatrix || {}).map(
-                  ([key, val]) => {
-                    if (key === "Handover" || key === "Absorption") return null;
-                    return (
-                      <div
-                        key={key}
-                        className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-100 shadow-sm"
-                      >
-                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">
-                          {key}
-                        </p>
-                        <p className="text-xs sm:text-sm font-black text-slate-800 tracking-tight">
-                          {val}
-                        </p>
+
+              {/* ENHANCED MATRIX GRID WITH SMALLER CARDS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+                {Object.entries(analysis.performanceMatrix || {}).map(([key, val]) => {
+                  if (key === "Handover" || key === "Absorption") return null;
+                  const reasons = analysis.breakdown?.filter((b) => b.pillar.toLowerCase().startsWith(key.toLowerCase().substring(0, 4)));
+                  const isActive = activeInfoKey === key;
+                  return (
+                    <div key={key} className="group relative bg-white p-4 sm:p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all hover:border-indigo-200">
+                      <div className="flex justify-between items-start mb-1.5">
+                        <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">{key}</p>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setActiveInfoKey(isActive ? null : key); }} 
+                          className={`p-1.5 rounded-full transition-all ${isActive ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"}`}
+                        >
+                          <Info size={16} strokeWidth={2.5} />
+                        </button>
                       </div>
-                    );
-                  },
-                )}
+                      <p className="text-base sm:text-lg font-black text-slate-800 tracking-tight">{val}</p>
+                      
+                      {/* ENHANCED REASON OVERLAY WITH SMALLER TEXT */}
+                      {isActive && (
+                        <div className="absolute inset-0 bg-white/98 backdrop-blur-sm p-5 rounded-xl z-10 flex flex-col justify-center animate-in fade-in zoom-in duration-200 shadow-2xl border-2 border-indigo-500/10">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Analysis Insight</span>
+                            <button onClick={() => setActiveInfoKey(null)} className="p-1 hover:bg-slate-100 rounded-full"><X size={14} className="text-slate-400" /></button>
+                          </div>
+                          <div className="overflow-y-auto max-h-[100px] no-scrollbar">
+                            {reasons?.length > 0 ? reasons.map((r, i) => (
+                              <p key={i} className="text-xs leading-relaxed font-bold text-slate-700 mb-1.5 last:mb-0 bg-slate-50 p-1.5 rounded-md">• {r.explanation}</p>
+                            )) : <p className="text-xs font-bold text-slate-400 italic">No specific data points available.</p>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <button
-                onClick={() => setIsAnalysisModalOpen(false)}
-                className={`w-full py-4 text-white rounded-2xl font-black text-xs uppercase shadow-lg ${sentiment.bg} hover:brightness-110`}
+              <button 
+                onClick={() => setIsAnalysisModalOpen(false)} 
+                className={`w-full py-4 text-white rounded-xl font-black text-sm uppercase shadow-xl ${sentiment.bg} hover:brightness-110 transition-all hover:scale-[1.02] active:scale-95`}
               >
-                Close Intelligence Report
+                Return to Dashboard
               </button>
             </div>
           </div>
@@ -285,10 +294,7 @@ export default function StockDetailView() {
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 gap-4">
         <div className="flex items-start sm:items-center gap-3 sm:gap-4">
-          <button
-            onClick={() => navigate("/")}
-            className="p-2 hover:bg-slate-100 rounded-full transition-colors mt-1 sm:mt-0"
-          >
+          <button onClick={() => navigate("/")} className="p-2 hover:bg-slate-100 rounded-full transition-colors mt-1 sm:mt-0">
             <ArrowLeft size={20} />
           </button>
           <div className="flex flex-col">
@@ -296,275 +302,101 @@ export default function StockDetailView() {
               <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">
                 {data?.symbol || symbol}
               </h1>
-              <button
-                onClick={() => setIsAnalysisModalOpen(true)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider ${sentiment.light} ${sentiment.text} ${sentiment.border}`}
-              >
-                {sentiment.icon}{" "}
+              <button onClick={() => setIsAnalysisModalOpen(true)} className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider ${sentiment.light} ${sentiment.text} ${sentiment.border}`}>
                 <span>{analysis?.sentiment || "Analyzing..."}</span>
               </button>
             </div>
             <p className="text-[10px] sm:text-xs font-bold text-slate-400 mt-1 uppercase truncate max-w-[200px] sm:max-w-none">
               {data?.companyName || "Loading..."}
             </p>
-            <button
-              onClick={() => navigate(`/strategy/${symbol}`)}
-              className="mt-2 w-fit flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-black text-[9px] uppercase hover:bg-indigo-700 transition-colors"
-            >
+            <button onClick={() => navigate(`/strategy/${symbol}`)} className="mt-2 w-fit flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-black text-[9px] uppercase hover:bg-indigo-700 transition-colors">
               <Zap size={12} className="fill-white" /> Strategic Command
             </button>
           </div>
         </div>
         <div className="w-full sm:w-auto text-left sm:text-right border-t sm:border-0 pt-3 sm:pt-0">
-          <div
-            className={`text-2xl sm:text-3xl md:text-4xl font-black ${isUp ? "text-emerald-600" : "text-rose-600"} tracking-tighter`}
-          >
+          <div className={`text-2xl sm:text-3xl md:text-4xl font-black ${isUp ? "text-emerald-600" : "text-rose-600"} tracking-tighter`}>
             ₹ {formatNum(data?.ratios?.currentPrice)}
           </div>
-          <div
-            className={`flex items-center sm:justify-end gap-1 text-xs sm:text-sm font-bold ${isUp ? "text-emerald-500" : "text-rose-500"}`}
-          >
-            {isUp ? <TrendingUp size={14} /> : <TrendingDown size={14} />}{" "}
-            {formatNum(data?.ratios?.priceChange)} (
-            {formatNum(data?.ratios?.priceChangePercent)}%)
+          <div className={`flex items-center sm:justify-end gap-1 text-xs sm:text-sm font-bold ${isUp ? "text-emerald-500" : "text-rose-500"}`}>
+            {formatNum(data?.ratios?.priceChange)} ({formatNum(data?.ratios?.priceChangePercent)}%)
           </div>
         </div>
       </div>
 
-      {/* RATIOS & NEWS GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <div className="lg:col-span-2 bg-white rounded-2xl p-4 sm:p-7 shadow-sm border border-slate-100 grid grid-cols-2 gap-y-4 gap-x-4 sm:gap-x-12 content-start">
           <RatioItem label="Market Cap" value={data?.ratios?.marketCap} />
-          <RatioItem
-            label="Price"
-            value={`₹${formatNum(data?.ratios?.currentPrice)}`}
-          />
-          <RatioItem
-            label="52W H/L"
-            value={`${formatNum(data?.ratios?.high52W)} / ${formatNum(data?.ratios?.low52W)}`}
-          />
+          <RatioItem label="Price" value={`₹${formatNum(data?.ratios?.currentPrice)}`} />
+          <RatioItem label="52W H/L" value={`${formatNum(data?.ratios?.high52W)} / ${formatNum(data?.ratios?.low52W)}`} />
           <RatioItem label="P/E" value={data?.ratios?.stockPE} />
-          <RatioItem
-            label="Div Yield"
-            value={`${data?.ratios?.dividendYield}%`}
-          />
-          <RatioItem
-            label="ROCE/ROE"
-            value={`${data?.ratios?.roce} / ${data?.ratios?.roe}`}
-          />
-          <RatioItem
-            label="Hist. High"
-            value={`₹${formatNum(data?.ratios?.historicalHigh)}`}
-          />
+          <RatioItem label="Div Yield" value={`${data?.ratios?.dividendYield}%`} />
+          <RatioItem label="ROCE/ROE" value={`${data?.ratios?.roce} / ${data?.ratios?.roe}`} />
+          <RatioItem label="Hist. High" value={`₹${formatNum(data?.ratios?.historicalHigh)}`} />
           <RatioItem label="Face Value" value={data?.ratios?.faceValue} />
         </div>
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col overflow-hidden h-[250px] sm:h-auto sm:max-h-[300px]">
           <div className="p-3 sm:p-4 border-b border-slate-50 flex items-center gap-2 bg-slate-50/50">
             <Newspaper className="text-indigo-600" size={16} />
-            <h3 className="font-bold text-slate-800 text-xs sm:text-sm uppercase">
-              Latest News
-            </h3>
+            <h3 className="font-bold text-slate-800 text-xs sm:text-sm uppercase">Latest News</h3>
           </div>
           <div className="overflow-y-auto divide-y divide-slate-50">
             {news.map((item, idx) => (
-              <a
-                key={idx}
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group block p-3 hover:bg-slate-50"
-              >
+              <a key={idx} href={item.url} target="_blank" rel="noopener noreferrer" className="group block p-3 hover:bg-slate-50">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-[8px] font-black text-indigo-600 uppercase">
-                    {item.source}
-                  </span>
+                  <span className="text-[8px] font-black text-indigo-600 uppercase">{item.source}</span>
                   <span className="text-[8px] font-bold text-slate-400">
-                    {new Date(item.publishedAt).toLocaleDateString("en-IN", {
-                      day: "2-digit",
-                      month: "short",
-                    })}
+                    {new Date(item.publishedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
                   </span>
                 </div>
-                <h4 className="text-[11px] font-bold text-slate-700 line-clamp-2">
-                  {item.title}
-                </h4>
+                <h4 className="text-[11px] font-bold text-slate-700 line-clamp-2">{item.title}</h4>
               </a>
             ))}
           </div>
         </div>
       </div>
 
-      {/* CHART SECTION */}
       <div className="bg-white rounded-2xl sm:rounded-3xl p-3 sm:p-6 shadow-sm border border-slate-100">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-          <PeriodCard
-            label="Period High"
-            value={`₹${formatNum(data?.periodHigh)}`}
-            icon={<ArrowUp size={16} />}
-            color="text-emerald-500"
-          />
-          <PeriodCard
-            label="Period Low"
-            value={`₹${formatNum(data?.periodLow)}`}
-            icon={<ArrowDown size={16} />}
-            color="text-rose-500"
-          />
-          <PeriodCard
-            label="Return"
-            value={`${isPeriodPositive ? "+" : ""}${formatNum(data?.periodReturn)}%`}
-            icon={<Activity size={16} />}
-            color={isPeriodPositive ? "text-emerald-500" : "text-rose-500"}
-          />
+          <PeriodCard label="Period High" value={`₹${formatNum(data?.periodHigh)}`} icon={<Activity size={16} />} color="text-emerald-500" />
+          <PeriodCard label="Period Low" value={`₹${formatNum(data?.periodLow)}`} icon={<Activity size={16} />} color="text-rose-500" />
+          <PeriodCard label="Return" value={`${isPeriodPositive ? "+" : ""}${formatNum(data?.periodReturn)}%`} icon={<Activity size={16} />} color={isPeriodPositive ? "text-emerald-500" : "text-rose-500"} />
         </div>
 
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <div className="flex bg-slate-100 p-1 rounded-xl gap-1 overflow-x-auto w-full md:w-auto no-scrollbar">
             {["1d", "1w", "1m", "3m", "6m", "1y", "3y", "max"].map((f) => (
-              <button
-                key={f}
-                onClick={() => setRange(f)}
-                className={`flex-shrink-0 px-3 sm:px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${range === f ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400"}`}
-              >
+              <button key={f} onClick={() => setRange(f)} className={`flex-shrink-0 px-3 sm:px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${range === f ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400"}`}>
                 {f}
               </button>
             ))}
           </div>
           <div className="flex gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100 overflow-x-auto w-full md:w-auto no-scrollbar">
-            <ToggleButton
-              label="Volume"
-              active={showVolumeAlways}
-              onClick={() => setShowVolumeAlways(!showVolumeAlways)}
-              color="#475569"
-            />
-            <ToggleButton
-              label="50 DMA"
-              active={showDMA50}
-              onClick={() => setShowDMA50(!showDMA50)}
-              color="#f59e0b"
-            />
-            <ToggleButton
-              label="200 DMA"
-              active={showDMA200}
-              onClick={() => setShowDMA200(!showDMA200)}
-              color="#64748b"
-            />
+            <ToggleButton label="Volume" active={showVolumeAlways} onClick={() => setShowVolumeAlways(!showVolumeAlways)} color="#475569" />
+            <ToggleButton label="50 DMA" active={showDMA50} onClick={() => setShowDMA50(!showDMA50)} color="#f59e0b" />
+            <ToggleButton label="200 DMA" active={showDMA200} onClick={() => setShowDMA200(!showDMA200)} color="#64748b" />
           </div>
         </div>
 
-        {/* CHANGE: Reduced height here */}
         <div className="h-[250px] sm:h-[300px] md:h-[350px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart
-              data={data?.chartData}
-              margin={{ left: 35, right: 35, bottom: 0, top: 10 }}
-            >
+            <ComposedChart data={data?.chartData} margin={{ left: 35, right: 35, bottom: 0, top: 10 }}>
               <defs>
                 <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={themeColor} stopOpacity={0.15} />
                   <stop offset="95%" stopColor={themeColor} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid
-                strokeDasharray="3 3"
-                vertical={false}
-                stroke="#f1f5f9"
-              />
-              <XAxis
-                dataKey="date"
-                tickFormatter={renderDateTick}
-                minTickGap={30}
-                tick={{ fontSize: 9, fontWeight: 600, fill: "#94a3b8" }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                yAxisId="vol"
-                orientation="left"
-                domain={[0, (dataMax) => dataMax * 1.2]}
-                tickFormatter={formatVolumeLabel}
-                tick={{ fontSize: 9, fill: "#6366f1" }}
-                axisLine={false}
-                tickLine={false}
-                label={{
-                  value: "VOLUME",
-                  angle: -90,
-                  position: "insideLeft",
-                  offset: -25,
-                  style: { fontSize: 9, fontWeight: 900, fill: "#cbd5e1" },
-                }}
-              />
-              <YAxis
-                yAxisId="price"
-                orientation="right"
-                domain={["auto", "auto"]}
-                tick={{ fontSize: 10, fill: "#1e293b", fontWeight: 700 }}
-                axisLine={false}
-                tickLine={false}
-                label={{
-                  value: "PRICE (₹)",
-                  angle: 90,
-                  position: "insideRight",
-                  offset: -5,
-                  style: { fontSize: 9, fontWeight: 900, fill: "#cbd5e1" },
-                }}
-              />
-              <Tooltip
-                content={<CustomTooltip toggles={{ showDMA50, showDMA200 }} />}
-                cursor={{
-                  stroke: "#94a3b8",
-                  strokeWidth: 1,
-                  strokeDasharray: "5 5",
-                }}
-              />
-              <Area
-                yAxisId="price"
-                type="monotone"
-                dataKey="price"
-                fill="url(#colorTrend)"
-                stroke="none"
-                connectNulls
-              />
-              {showVolumeAlways && (
-                <Bar
-                  yAxisId="vol"
-                  dataKey="volume"
-                  fill="#6366f1"
-                  opacity={0.6}
-                  radius={[4, 4, 0, 0]}
-                  barSize={range === "1d" ? 6 : 15}
-                />
-              )}
-              <Line
-                yAxisId="price"
-                type="monotone"
-                dataKey="price"
-                stroke={themeColor}
-                strokeWidth={2}
-                dot={false}
-                connectNulls
-              />
-              {showDMA50 && (
-                <Line
-                  yAxisId="price"
-                  type="monotone"
-                  dataKey="dmA50"
-                  stroke="#f59e0b"
-                  strokeWidth={1.2}
-                  dot={false}
-                  connectNulls
-                />
-              )}
-              {showDMA200 && (
-                <Line
-                  yAxisId="price"
-                  type="monotone"
-                  dataKey="dmA200"
-                  stroke="#64748b"
-                  strokeWidth={1.2}
-                  dot={false}
-                  connectNulls
-                />
-              )}
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="date" tickFormatter={renderDateTick} minTickGap={30} tick={{ fontSize: 9, fontWeight: 600, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <YAxis yAxisId="vol" orientation="left" domain={[0, (dataMax) => dataMax * 1.2]} tickFormatter={formatVolumeLabel} tick={{ fontSize: 9, fill: "#6366f1" }} axisLine={false} tickLine={false} label={{ value: "VOLUME", angle: -90, position: "insideLeft", offset: -25, style: { fontSize: 9, fontWeight: 900, fill: "#cbd5e1" } }} />
+              <YAxis yAxisId="price" orientation="right" domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "#1e293b", fontWeight: 700 }} axisLine={false} tickLine={false} label={{ value: "PRICE (₹)", angle: 90, position: "insideRight", offset: -5, style: { fontSize: 9, fontWeight: 900, fill: "#cbd5e1" } }} />
+              <Tooltip content={<CustomTooltip toggles={{ showDMA50, showDMA200 }} />} cursor={{ stroke: "#94a3b8", strokeWidth: 1, strokeDasharray: "5 5" }} />
+              <Area yAxisId="price" type="monotone" dataKey="price" fill="url(#colorTrend)" stroke="none" connectNulls />
+              {showVolumeAlways && <Bar yAxisId="vol" dataKey="volume" fill="#6366f1" opacity={0.6} radius={[4, 4, 0, 0]} barSize={range === "1d" ? 6 : 15} />}
+              <Line yAxisId="price" type="monotone" dataKey="price" stroke={themeColor} strokeWidth={2} dot={false} connectNulls />
+              {showDMA50 && <Line yAxisId="price" type="monotone" dataKey="dmA50" stroke="#f59e0b" strokeWidth={1.2} dot={false} connectNulls />}
+              {showDMA200 && <Line yAxisId="price" type="monotone" dataKey="dmA200" stroke="#64748b" strokeWidth={1.2} dot={false} connectNulls />}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -578,81 +410,30 @@ export default function StockDetailView() {
 
       <div className="space-y-6 pt-6">
         <div className="flex bg-white p-2.5 rounded-2xl shadow-md border border-slate-100 gap-2 overflow-x-auto no-scrollbar w-full md:w-fit">
-          {[
-            { id: "quarters", label: "QUARTERS" },
-            { id: "pl", label: "P&L" },
-            { id: "balance", label: "BALANCE" },
-            { id: "cash", label: "CASH" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => toggleTable(tab.id)}
-              className={`whitespace-nowrap px-6 py-3.5 rounded-xl text-xs sm:text-sm font-black transition-all ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg scale-105" : "bg-slate-50 text-slate-400"}`}
-            >
-              {visibleTables[tab.id] ? <Eye size={12} /> : <EyeOff size={12} />}{" "}
-              {tab.label}
+          {[ { id: "quarters", label: "QUARTERS" }, { id: "pl", label: "P&L" }, { id: "balance", label: "BALANCE" }, { id: "cash", label: "CASH" }, ].map((tab) => (
+            <button key={tab.id} onClick={() => toggleTable(tab.id)} className={`whitespace-nowrap px-6 py-3.5 rounded-xl text-xs sm:text-sm font-black transition-all ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg scale-105" : "bg-slate-50 text-slate-400"}`}>
+              {visibleTables[tab.id] ? <Eye size={12} /> : <EyeOff size={12} />} {tab.label}
             </button>
           ))}
         </div>
         <div className="space-y-12">
-          {visibleTables.quarters && (
-            <div className="overflow-x-auto no-scrollbar">
-              <FinancialTable
-                title="Quarterly Results"
-                data={data?.quarterlyResults}
-              />
-            </div>
-          )}
-          {visibleTables.pl && (
-            <div className="overflow-x-auto no-scrollbar">
-              <FinancialTable
-                title="Annual Profit & Loss"
-                data={data?.profitAndLoss}
-              />
-            </div>
-          )}
-          {visibleTables.balance && (
-            <div className="overflow-x-auto no-scrollbar">
-              <FinancialTable title="Balance Sheet" data={data?.balanceSheet} />
-            </div>
-          )}
-          {visibleTables.cash && (
-            <div className="overflow-x-auto no-scrollbar">
-              <FinancialTable
-                title="Cash Flow Statement"
-                data={data?.cashFlow}
-              />
-            </div>
-          )}
+          {visibleTables.quarters && <div className="overflow-x-auto no-scrollbar"><FinancialTable title="Quarterly Results" data={data?.quarterlyResults} /></div>}
+          {visibleTables.pl && <div className="overflow-x-auto no-scrollbar"><FinancialTable title="Annual Profit & Loss" data={data?.profitAndLoss} /></div>}
+          {visibleTables.balance && <div className="overflow-x-auto no-scrollbar"><FinancialTable title="Balance Sheet" data={data?.balanceSheet} /></div>}
+          {visibleTables.cash && <div className="overflow-x-auto no-scrollbar"><FinancialTable title="Cash Flow Statement" data={data?.cashFlow} /></div>}
         </div>
       </div>
 
-      {!shLoading && shareholding && (
-        <ShareholdingSection
-          data={shareholding}
-          analysis={analysis}
-          onOpenTrades={handleOpenTrades}
-        />
-      )}
-
-      <TradeModal
-        isOpen={isTradeModalOpen}
-        onClose={() => setIsTradeModalOpen(false)}
-        trades={trades}
-        symbol={symbol}
-      />
+      {!shLoading && shareholding && <ShareholdingSection data={shareholding} analysis={analysis} onOpenTrades={handleOpenTrades} />}
+      <TradeModal isOpen={isTradeModalOpen} onClose={() => setIsTradeModalOpen(false)} trades={trades} symbol={symbol} />
     </div>
   );
 }
 
 const RatioItem = ({ label, value }) => (
   <div className="flex justify-between items-center border-b border-slate-50 pb-2">
-    <span className="text-slate-400 text-[10px] sm:text-xs font-medium uppercase tracking-tight">
-      {label}
-    </span>
-    <span className="text-slate-900 font-bold text-[10px] sm:text-xs tracking-tight ml-2">
-      {value || "N/A"}
-    </span>
+    <span className="text-slate-400 text-[10px] sm:text-xs font-medium uppercase tracking-tight">{label}</span>
+    <span className="text-slate-900 font-bold text-[10px] sm:text-xs tracking-tight ml-2">{value || "N/A"}</span>
   </div>
 );
 
@@ -660,22 +441,14 @@ const PeriodCard = ({ label, value, icon, color }) => (
   <div className="bg-slate-50/50 border border-slate-100 p-3 rounded-xl flex items-center gap-3">
     <div className={`p-1.5 bg-white rounded-lg shadow-sm ${color}`}>{icon}</div>
     <div className="min-w-0">
-      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
-        {label}
-      </p>
-      <p className="text-sm sm:text-base font-black text-slate-900 truncate tracking-tight">
-        {value}
-      </p>
+      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+      <p className="text-sm sm:text-base font-black text-slate-900 truncate tracking-tight">{value}</p>
     </div>
   </div>
 );
 
 const ToggleButton = ({ label, active, onClick, color }) => (
-  <button
-    onClick={onClick}
-    className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-[9px] font-bold border transition-all ${active ? "bg-white border-slate-200 shadow-sm" : "bg-transparent border-transparent text-slate-400"}`}
-    style={{ color: active ? color : undefined }}
-  >
+  <button onClick={onClick} className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-[9px] font-bold border transition-all ${active ? "bg-white border-slate-200 shadow-sm" : "bg-transparent border-transparent text-slate-400"}`} style={{ color: active ? color : undefined }}>
     {label}
   </button>
 );
@@ -686,40 +459,28 @@ const CustomTooltip = ({ active, payload, toggles }) => {
     return (
       <div className="bg-slate-900/95 text-white p-2.5 rounded-xl text-[10px] shadow-2xl border border-slate-800 min-w-[140px] backdrop-blur-md">
         <p className="font-black text-indigo-300 border-b border-slate-800 pb-1 mb-1.5 text-center uppercase">
-          {new Date(d.date).toLocaleDateString("en-IN", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          })}
+          {new Date(d.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
         </p>
         <div className="space-y-1">
           <div className="flex justify-between gap-4">
             <span>Price:</span>
-            <span className="font-black text-white">
-              ₹{Number(d.price || 0).toFixed(1)}
-            </span>
+            <span className="font-black text-white">₹{Number(d.price || 0).toFixed(1)}</span>
           </div>
           {toggles.showDMA50 && d.dmA50 && (
             <div className="flex justify-between gap-4">
               <span className="text-amber-500">50D:</span>
-              <span className="font-black text-amber-200">
-                ₹{Number(d.dmA50).toFixed(1)}
-              </span>
+              <span className="font-black text-amber-200">₹{Number(d.dmA50).toFixed(1)}</span>
             </div>
           )}
           {toggles.showDMA200 && d.dmA200 && (
             <div className="flex justify-between gap-4">
               <span className="text-slate-400">200D:</span>
-              <span className="font-black text-slate-300">
-                ₹{Number(d.dmA200).toFixed(1)}
-              </span>
+              <span className="font-black text-slate-300">₹{Number(d.dmA200).toFixed(1)}</span>
             </div>
           )}
           <div className="flex justify-between gap-4 border-t border-slate-800 pt-1">
             <span>Vol:</span>
-            <span className="font-bold">
-              {d.volume?.toLocaleString("en-IN")}
-            </span>
+            <span className="font-bold">{d.volume?.toLocaleString("en-IN")}</span>
           </div>
         </div>
       </div>
