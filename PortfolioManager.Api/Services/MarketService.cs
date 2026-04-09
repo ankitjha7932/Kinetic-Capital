@@ -41,7 +41,13 @@ public class MarketService
 
     public async Task<List<MarketMomentum>> GetTickerDataAsync()
     {
-        return _cache.Get<List<MarketMomentum>>(TickerCacheKey) ?? new List<MarketMomentum>();
+        var cached = _cache.Get<List<MarketMomentum>>(TickerCacheKey);
+        if (cached == null || !cached.Any())
+        {
+            await RefreshTickerBatchAsync();
+            cached = _cache.Get<List<MarketMomentum>>(TickerCacheKey);
+        }
+        return cached ?? new List<MarketMomentum>();
     }
 
     /// <summary>
