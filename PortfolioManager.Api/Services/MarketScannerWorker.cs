@@ -31,7 +31,13 @@ public class MarketScannerWorker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var indiaTimeZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+            // Minimal Change: Support for both Windows and Linux Timezone IDs to prevent Status 139 crash
+            var tzId = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                System.Runtime.InteropServices.OSPlatform.Windows
+            )
+                ? "India Standard Time"
+                : "Asia/Kolkata";
+            var indiaTimeZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
             var nowIST = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, indiaTimeZone);
 
             if (IsMarketOpen(nowIST))
@@ -63,7 +69,10 @@ public class MarketScannerWorker : BackgroundService
                     Math.Round(sleepDuration.TotalHours, 2)
                 );
 
-                await Task.Delay(sleepDuration, stoppingToken);
+                // Minimal Change: Ensure we don't sleep forever if duration is negative, and handle cancellation
+                var delayTime =
+                    sleepDuration.TotalMilliseconds > 0 ? sleepDuration : TimeSpan.FromMinutes(1);
+                await Task.Delay(delayTime, stoppingToken);
             }
         }
     }

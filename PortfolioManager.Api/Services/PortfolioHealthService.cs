@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using PortfolioManager.Api.Models;
 
 namespace PortfolioManager.Api.Services;
@@ -22,17 +23,18 @@ public class PortfolioHealthService
             );
         }
 
-        var totalInvested = holdings.Sum(h => h.Quantity * h.AvgBuyPrice);
-        var currentValue = holdings.Sum(h => h.Quantity * h.CurrentPrice);
-        var totalPnl = currentValue - totalInvested;
-        var totalPnlPct = totalInvested == 0 ? 0 : (totalPnl / totalInvested) * 100m;
+        // Minimal change: Ensure rounding is applied to prevent floating point issues in JSON serialization
+        var totalInvested = Math.Round(holdings.Sum(h => h.Quantity * h.AvgBuyPrice), 2);
+        var currentValue = Math.Round(holdings.Sum(h => h.Quantity * h.CurrentPrice), 2);
+        var totalPnl = Math.Round(currentValue - totalInvested, 2);
+        var totalPnlPct = totalInvested == 0 ? 0 : Math.Round((totalPnl / totalInvested) * 100m, 2);
 
         var positions = new List<PositionAdvice>();
         foreach (var h in holdings)
         {
             var invested = h.Quantity * h.AvgBuyPrice;
             var pnl = h.Quantity * (h.CurrentPrice - h.AvgBuyPrice);
-            var pnlPct = invested == 0 ? 0 : (pnl / invested) * 100m;
+            var pnlPct = invested == 0 ? 0 : Math.Round((pnl / invested) * 100m, 2);
 
             string action =
                 pnlPct <= -30 ? "SELL_FAST"
@@ -58,7 +60,7 @@ public class PortfolioHealthService
                     pnlPct,
                     action,
                     reason,
-                    h.MarketCapLabel,
+                    h.MarketCapLabel, // Carried from Controller safely
                     new List<decimal>()
                 )
             );
@@ -68,9 +70,12 @@ public class PortfolioHealthService
             .Select(h =>
                 (
                     h.Symbol,
-                    Weight: (h.Quantity * h.CurrentPrice)
-                        / (currentValue == 0 ? 1 : currentValue)
-                        * 100m
+                    Weight: Math.Round(
+                        (h.Quantity * h.CurrentPrice)
+                            / (currentValue == 0 ? 1 : currentValue)
+                            * 100m,
+                        2
+                    )
                 )
             )
             .ToList();
@@ -102,7 +107,7 @@ public class PortfolioHealthService
         }
         if (totalPnlPct < 0)
         {
-            warnings.Add($"Overall portfolio is at a loss of {totalPnlPct:F1}%.");
+            warnings.Add($"Overall portfolio is at a loss of {Math.Abs(totalPnlPct):F1}%.");
         }
 
         return new PortfolioHealthResult(
