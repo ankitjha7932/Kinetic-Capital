@@ -20,12 +20,17 @@ var builder = WebApplication.CreateBuilder(args);
 // Clear default mapping to allow Custom Claims
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
-// Database Configuration
-var mongoUri =
-    Environment.GetEnvironmentVariable("DATABASE_URL")
+// --- DATABASE CONFIGURATION (UPDATED FOR RENDER STABILITY) ---
+var mongoUri = Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? builder.Configuration["DATABASE_URL"]
     ?? "mongodb://localhost:27017";
-var mongoClient = new MongoClient(mongoUri);
+
+// Configure settings to handle DNS transient errors on Render/Atlas
+var settings = MongoClientSettings.FromConnectionString(mongoUri);
+settings.ServerSelectionTimeout = TimeSpan.FromSeconds(30);
+settings.ConnectTimeout = TimeSpan.FromSeconds(30);
+
+var mongoClient = new MongoClient(settings);
 var databaseName = "KineticCapitalDB";
 
 builder.Services.AddSingleton<IMongoClient>(mongoClient);
@@ -50,7 +55,7 @@ builder.Services.AddCors(options =>
     );
 });
 
-// Services Registration (Duplicates Removed)
+// Services Registration
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddMemoryCache();
@@ -68,8 +73,7 @@ builder.Services.AddScoped<PeerComparisonService>();
 builder.Services.AddHostedService<MarketScannerWorker>();
 
 // HttpClient Configurations
-builder
-    .Services.AddHttpClient<StockPriceService>()
+builder.Services.AddHttpClient<StockPriceService>()
     .ConfigurePrimaryHttpMessageHandler(() =>
         new HttpClientHandler
         {
@@ -79,8 +83,7 @@ builder
         }
     );
 
-builder
-    .Services.AddHttpClient<NewsService>()
+builder.Services.AddHttpClient<NewsService>()
     .ConfigurePrimaryHttpMessageHandler(() =>
         new HttpClientHandler
         {
@@ -128,8 +131,7 @@ var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? builder.Configurat
 if (string.IsNullOrEmpty(jwtKey))
     throw new Exception("JWT Key is missing. Check your .env file.");
 
-builder
-    .Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
@@ -147,9 +149,7 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// --- MIDDLEWARE PIPELINE (Order is Critical) ---
-
-// 1. CORS MUST BE FIRST to handle Preflight (OPTIONS) requests
+// --- MIDDLEWARE PIPELINE ---
 app.UseCors("FrontendPolicy");
 
 if (app.Environment.IsDevelopment())
@@ -159,15 +159,12 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    // 2. HTTPS Redirection only after CORS
     app.UseHttpsRedirection();
-
-    // Set Port for Production/Vercel
-    var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+    // Port Binding logic optimized for Render
+    var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
     app.Urls.Add($"http://0.0.0.0:{port}");
 }
 
-// 3. Routing, then Auth, then Map
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
