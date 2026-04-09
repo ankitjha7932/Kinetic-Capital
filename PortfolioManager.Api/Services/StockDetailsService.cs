@@ -12,7 +12,6 @@ namespace PortfolioManager.Api.Services
 
         private static readonly Dictionary<string, string> _faceValueCache = new();
 
-        // Object used to synchronize access to the dictionary during initialization
         private static readonly object _csvLock = new();
 
         public StockDetailsService(
@@ -25,12 +24,10 @@ namespace PortfolioManager.Api.Services
             _fundamentalCollection = database.GetCollection<StockFundamental>("StocksDeepData");
             _analysisService = analysisService;
 
-            // Thread-safe initialization of the static cache
             if (!_faceValueCache.Any())
             {
                 lock (_csvLock)
                 {
-                    // Double-check to ensure another thread didn't fill it while we were waiting for the lock
                     if (!_faceValueCache.Any())
                     {
                         string fileName = Path.Combine("Data", "EQUITY_L.csv");
@@ -54,14 +51,11 @@ namespace PortfolioManager.Api.Services
                                             .ToUpper()
                                             .Replace("\"", "");
                                         string faceVal = parts[7].Trim().Replace("\"", "");
-                                        // Using indexed assignment is safe within the lock
                                         _faceValueCache[symbolKey] = faceVal;
                                     }
                                 }
                             }
-                            catch
-                            { /* Silent fail to prevent API crash on file lock */
-                            }
+                            catch { }
                         }
                     }
                 }
@@ -83,11 +77,10 @@ namespace PortfolioManager.Api.Services
                 "6m" => ("2y", "6month"),
                 "1y" => ("3y", "year"),
                 "3y" => ("5y", "3year"),
-                "max" => ("max", "max"), // Added explicit support for max
-                _ => ("max", "max"), // Default to max to ensure data is always available
+                "max" => ("max", "max"),
+                _ => ("max", "max"),
             };
 
-            // Safety timeout to prevent 502 Bad Gateway
             var timeout = TimeSpan.FromSeconds(10);
 
             var historyTask = _priceService.GetHistoricalDataAsync(dbSymbol, fetchRange);
@@ -102,12 +95,9 @@ namespace PortfolioManager.Api.Services
             }
             catch (TimeoutException)
             {
-                // Return null or partial data if external providers hang
                 return null;
             }
-            catch
-            { /* Catch other task faults */
-            }
+            catch { }
 
             var history = await historyTask;
             var fundamentals = await mongoTask;
@@ -116,7 +106,12 @@ namespace PortfolioManager.Api.Services
             if (history == null || !history.Prices.Any())
                 return null;
 
-            TimeZoneInfo istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+            var tzId = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                System.Runtime.InteropServices.OSPlatform.Windows
+            )
+                ? "India Standard Time"
+                : "Asia/Kolkata";
+            TimeZoneInfo istZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
             DateTime istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, istZone);
 
             DateTime cutoffDate = cutoffMode switch
@@ -128,7 +123,7 @@ namespace PortfolioManager.Api.Services
                 "6month" => istNow.AddMonths(-6),
                 "year" => istNow.AddMonths(-12),
                 "3year" => istNow.AddMonths(-36),
-                "max" => DateTime.MinValue, // Ensure MinValue is used so no data is filtered out
+                "max" => DateTime.MinValue,
                 _ => DateTime.MinValue,
             };
 
@@ -301,10 +296,17 @@ namespace PortfolioManager.Api.Services
 
             if (decimal.TryParse(cleanValue, out decimal amount))
             {
-                // Use Indian culture for correct comma placement (e.g., 9,66,312)
-                var indianCulture = new System.Globalization.CultureInfo("en-IN");
-                string formatted = amount.ToString("N0", indianCulture);
-                return $"₹ {formatted}";
+                try
+                {
+                    // Use Indian culture for correct comma placement (e.g., 9,66,312)
+                    var indianCulture = new System.Globalization.CultureInfo("en-IN");
+                    string formatted = amount.ToString("N0", indianCulture);
+                    return $"₹ {formatted}";
+                }
+                catch
+                {
+                    return $"₹ {amount:N0}";
+                }
             }
 
             return $"₹ {rawMarketCap}";

@@ -18,6 +18,7 @@ namespace PortfolioManager.Api.Controllers
         private readonly IStockAnalysisService _analysisService;
         private readonly IMongoCollection<StockFundamental> _fundamentalCollection;
         private readonly PeerComparisonService _peerService;
+        private static readonly SemaphoreSlim _analysisSemaphore = new SemaphoreSlim(2); // Global limit for heavy analysis
 
         public StocksController(
             StockDetailsService detailsService,
@@ -32,16 +33,12 @@ namespace PortfolioManager.Api.Controllers
             _peerService = peerComparisonService;
         }
 
-        /// <summary>
-        /// Unified Search: Used for both Global Search (Navbar) and Modal Search (Add to Portfolio).
-        /// </summary>
         [HttpGet("search")]
         public async Task<IActionResult> Search([FromQuery] string query)
         {
             if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
                 return Ok(new List<object>());
 
-            // Case-insensitive regex for Symbol and CompanyName
             var filter = Builders<StockFundamental>.Filter.Or(
                 Builders<StockFundamental>.Filter.Regex(
                     s => s.Symbol,
@@ -53,7 +50,6 @@ namespace PortfolioManager.Api.Controllers
                 )
             );
 
-            // High-performance projection: Only fetch what the UI needs for the dropdown
             var results = await _fundamentalCollection
                 .Find(filter)
                 .Project(s => new
@@ -85,44 +81,42 @@ namespace PortfolioManager.Api.Controllers
         public async Task<IActionResult> GetAnalysis(string symbol)
         {
             string ticker = SanitizeTicker(symbol);
+            await _analysisSemaphore.WaitAsync();
 
             try
             {
-                // 1. Fetch both Stock Details and Trades (Bulk/Block deals) in parallel for efficiency
                 var detailsTask = _detailsService.GetStockDetailsAsync(ticker, "1y");
                 var tradesTask = _detailsService.GetStockTradesAsync(ticker);
 
-                // Add a global timeout to prevent the entire request from hanging indefinitely
-                var timeoutTask = Task.Delay(15000); 
-                var completedTask = await Task.WhenAny(Task.WhenAll(detailsTask, tradesTask), timeoutTask);
-
-                if (completedTask == timeoutTask)
-                {
-                    return StatusCode(504, new { message = "Request timed out while fetching external data" });
-                }
+                // Use WaitAsync for individual tasks instead of a timeout task for better control
+                await Task.WhenAll(detailsTask, tradesTask).WaitAsync(TimeSpan.FromSeconds(15));
 
                 var details = await detailsTask;
                 var tradesData = await tradesTask;
 
-                // 2. Validate essential data
                 if (details == null)
                     return NotFound(new { message = "Stock data not found" });
 
-                // 3. Run the updated analysis logic passing both datasets
-                // This ensures the 'Smart Money' pillar is no longer "Missing"
                 var analysis = _analysisService.AnalyzeStock(details, tradesData);
 
                 return analysis != null
                     ? Ok(analysis)
                     : BadRequest(new { message = "Analysis calculation failed" });
             }
+            catch (TimeoutException)
+            {
+                return StatusCode(504, new { message = "Request timed out" });
+            }
             catch (Exception ex)
             {
-                // Log the exception here if you have a logger
                 return StatusCode(
                     500,
-                    new { error = "Internal server error during analysis", details = ex.Message }
+                    new { error = "Internal server error", details = ex.Message }
                 );
+            }
+            finally
+            {
+                _analysisSemaphore.Release();
             }
         }
 
