@@ -113,6 +113,7 @@ export default function StockDetailView() {
     const fetchData = async () => {
       try {
         setLoading(true);
+        setTrades(null);
         const [analRes, newsRes, detRes, shRes, peerRes] = await Promise.all([
           api.get(`/stocks/analyze/${symbol}`),
           api.get(`/portfolio/news/${symbol}`),
