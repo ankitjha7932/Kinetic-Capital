@@ -33,7 +33,8 @@ public class NewsService
             string query = Uri.EscapeDataString($"{cleanSymbol} stock news India");
             string url = $"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en";
 
-            var response = await _httpClient.GetStreamAsync(url);
+            // Minimal change: Added WaitAsync to prevent hanging threads and 502 errors
+            var response = await _httpClient.GetStreamAsync(url).WaitAsync(TimeSpan.FromSeconds(8));
 
             using var xmlReader = XmlReader.Create(response);
             var feed = SyndicationFeed.Load(xmlReader);

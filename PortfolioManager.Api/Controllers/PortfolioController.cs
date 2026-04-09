@@ -48,8 +48,10 @@ public class PortfolioController : ControllerBase
         {
             var holdings = await _db.Holdings.Where(h => h.UserId == userId).ToListAsync();
 
+            // Minimal change: Semaphore limits concurrency to 3 to prevent 502/CORS crashes
             var semaphore = new SemaphoreSlim(3);
 
+            // Use the thread-safe MongoDB collection instead of the DbContext inside the parallel loop
             var stockCollection = _mongoDb.GetCollection<StockFundamental>("StocksDeepData");
 
             var tasks = holdings.Select(async h =>
@@ -80,6 +82,7 @@ public class PortfolioController : ControllerBase
                     string? marketCapLabel = null;
                     try
                     {
+                        // Using MongoDB Driver Find instead of EF Core to avoid threading crash
                         var fundamental = await stockCollection
                             .Find(s => s.Symbol == h.Symbol)
                             .FirstOrDefaultAsync();
