@@ -43,63 +43,75 @@ public class PortfolioController : ControllerBase
         try
         {
             var holdings = await _db.Holdings.Where(h => h.UserId == userId).ToListAsync();
-            
-            // Minimal change: Process holdings in parallel to avoid 502 timeouts
+
+            // 🔥 Minimal change: Semaphore limits concurrency to 3 to prevent 502/CORS crashes
+            var semaphore = new SemaphoreSlim(3);
+
             var tasks = holdings.Select(async h =>
             {
-                // 1. Fetch Live Price (Safe Fetch)
-                decimal livePrice = 0;
+                await semaphore.WaitAsync();
                 try
                 {
-                    livePrice = await _priceService.GetLivePriceAsync(h.Symbol);
-                }
-                catch
-                { /* Log price service error if needed */
-                }
-
-                if (livePrice <= 0)
-                    livePrice = h.AvgBuyPrice;
-
-                // 2. Calculations
-                decimal unrealizedPnl = CalculatePnl(h.Quantity, h.AvgBuyPrice, livePrice);
-                decimal pnlPercent =
-                    h.AvgBuyPrice > 0
-                        ? Math.Round(((livePrice - h.AvgBuyPrice) / h.AvgBuyPrice) * 100, 2)
-                        : 0;
-
-                // Mocked 1D change
-                decimal change1D = 0.85m;
-
-                // 3. Fetch Fundamental Data (DEFENSIVE FETCH)
-                string? marketCapLabel = null;
-                try
-                {
-                    var fundamental = await _db.Stocks.FirstOrDefaultAsync(s =>
-                        s.Symbol == h.Symbol
-                    );
-                    if (fundamental != null)
+                    // 1. Fetch Live Price (Safe Fetch)
+                    decimal livePrice = 0;
+                    try
                     {
-                        marketCapLabel = GetMarketCapLabel(ParseMarketCap(fundamental.MarketCap));
+                        // Added WaitAsync for extra safety against hanging API calls
+                        livePrice = await _priceService
+                            .GetLivePriceAsync(h.Symbol)
+                            .WaitAsync(TimeSpan.FromSeconds(8));
                     }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Mapping Error for {h.Symbol}: {ex.Message}");
-                }
+                    catch { }
 
-                return new HoldingResponse(
-                    h.Id,
-                    h.Symbol,
-                    h.Quantity,
-                    h.AvgBuyPrice,
-                    livePrice,
-                    unrealizedPnl,
-                    h.BuyDate,
-                    change1D,
-                    pnlPercent,
-                    h.Tags ?? "Equity",
-                    marketCapLabel
-                );
+                    if (livePrice <= 0)
+                        livePrice = h.AvgBuyPrice;
+
+                    // 2. Calculations
+                    decimal unrealizedPnl = CalculatePnl(h.Quantity, h.AvgBuyPrice, livePrice);
+                    decimal pnlPercent =
+                        h.AvgBuyPrice > 0
+                            ? Math.Round(((livePrice - h.AvgBuyPrice) / h.AvgBuyPrice) * 100, 2)
+                            : 0;
+
+                    decimal change1D = 0.85m; // Mocked
+
+                    // 3. Fetch Fundamental Data (DEFENSIVE FETCH)
+                    string? marketCapLabel = null;
+                    try
+                    {
+                        var fundamental = await _db.Stocks.FirstOrDefaultAsync(s =>
+                            s.Symbol == h.Symbol
+                        );
+                        if (fundamental != null)
+                        {
+                            marketCapLabel = GetMarketCapLabel(
+                                ParseMarketCap(fundamental.MarketCap)
+                            );
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Mapping Error for {h.Symbol}: {ex.Message}");
+                    }
+
+                    return new HoldingResponse(
+                        h.Id,
+                        h.Symbol,
+                        h.Quantity,
+                        h.AvgBuyPrice,
+                        livePrice,
+                        unrealizedPnl,
+                        h.BuyDate,
+                        change1D,
+                        pnlPercent,
+                        h.Tags ?? "Equity",
+                        marketCapLabel
+                    );
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
             });
 
             var holdingResponses = (await Task.WhenAll(tasks)).ToList();
@@ -114,7 +126,6 @@ public class PortfolioController : ControllerBase
             var totalPnl = Math.Round(totalCur - totalInv, 2);
             var totalPnlPct = totalInv > 0 ? Math.Round((totalPnl / totalInv) * 100, 2) : 0;
 
-            // FINAL SUCCESS RETURN
             return Ok(
                 new PortfolioSummaryResponse
                 {
@@ -124,13 +135,12 @@ public class PortfolioController : ControllerBase
                     CurrentValue = totalCur,
                     TotalPnl = totalPnl,
                     TotalPnlPercent = totalPnlPct,
-                    Holdings = holdingResponses,
+                    Holdings = holdingResponses.OrderBy(x => x.Symbol).ToList(),
                 }
             );
         }
         catch (Exception ex)
         {
-            // FINAL ERROR RETURN (Fixes CS0161)
             Console.WriteLine($"Fatal Portfolio Summary Error: {ex}");
             return StatusCode(500, $"Internal Server Error: {ex.Message}");
         }
@@ -139,18 +149,13 @@ public class PortfolioController : ControllerBase
     [HttpGet("analysis")]
     public async Task<IActionResult> AnalyzeCurrentUser([FromQuery] string userId)
     {
-        // 1. Get current portfolio data
         var summaryResult = await GetSummary(userId) as OkObjectResult;
         if (summaryResult?.Value is PortfolioSummaryResponse summary)
         {
-            // 2. Run the Health/Advice analysis
             var healthResult = _health.Analyze(userId, summary.Holdings);
-
-            // 3 Fetch 7-day trends for all symbols in the portfolio
             var symbols = summary.Holdings.Select(h => h.Symbol).ToList();
             var sparklineMap = await _priceService.GetBatchSparklinesAsync(symbols);
 
-            // 4. Inject history into each position's advice object
             foreach (var pos in healthResult.Positions)
             {
                 if (sparklineMap.TryGetValue(pos.Symbol, out var trend))
@@ -158,8 +163,6 @@ public class PortfolioController : ControllerBase
                     pos.History = trend;
                 }
             }
-
-            // Return the healthResult which now contains per-position history
             return Ok(healthResult);
         }
         return BadRequest("Could not analyze portfolio.");
@@ -206,7 +209,6 @@ public class PortfolioController : ControllerBase
         var holding = await _db.Holdings.FindAsync(id);
         if (holding == null)
             return NotFound();
-
         _db.Holdings.Remove(holding);
         await _db.SaveChangesAsync();
         return Ok(new { message = "Asset removed" });
