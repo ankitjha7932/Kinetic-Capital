@@ -21,12 +21,15 @@ var builder = WebApplication.CreateBuilder(args);
 JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 
 // --- DATABASE CONFIGURATION (UPDATED FOR RENDER STABILITY) ---
-var mongoUri = Environment.GetEnvironmentVariable("DATABASE_URL")
+var mongoUri =
+    Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? builder.Configuration["DATABASE_URL"]
     ?? "mongodb://localhost:27017";
 
 // Configure settings to handle DNS transient errors on Render/Atlas
 var settings = MongoClientSettings.FromConnectionString(mongoUri);
+
+// Minimal change: Add timeouts to prevent startup crash (Status 139) during DNS resolution
 settings.ServerSelectionTimeout = TimeSpan.FromSeconds(30);
 settings.ConnectTimeout = TimeSpan.FromSeconds(30);
 
@@ -73,7 +76,8 @@ builder.Services.AddScoped<PeerComparisonService>();
 builder.Services.AddHostedService<MarketScannerWorker>();
 
 // HttpClient Configurations
-builder.Services.AddHttpClient<StockPriceService>()
+builder
+    .Services.AddHttpClient<StockPriceService>()
     .ConfigurePrimaryHttpMessageHandler(() =>
         new HttpClientHandler
         {
@@ -83,7 +87,8 @@ builder.Services.AddHttpClient<StockPriceService>()
         }
     );
 
-builder.Services.AddHttpClient<NewsService>()
+builder
+    .Services.AddHttpClient<NewsService>()
     .ConfigurePrimaryHttpMessageHandler(() =>
         new HttpClientHandler
         {
@@ -131,7 +136,8 @@ var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? builder.Configurat
 if (string.IsNullOrEmpty(jwtKey))
     throw new Exception("JWT Key is missing. Check your .env file.");
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+builder
+    .Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
@@ -160,13 +166,12 @@ if (app.Environment.IsDevelopment())
 else
 {
     app.UseHttpsRedirection();
-    // Port Binding logic optimized for Render
-    var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
-    app.Urls.Add($"http://0.0.0.0:{port}");
 }
 
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-app.Run();
+// Minimal change: Port Binding logic optimized for Render to prevent 502/Port errors
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+app.Run($"http://0.0.0.0:{port}");
