@@ -87,13 +87,27 @@ namespace PortfolioManager.Api.Services
                 _ => ("max", "max"), // Default to max to ensure data is always available
             };
 
+            // Safety timeout to prevent 502 Bad Gateway
+            var timeout = TimeSpan.FromSeconds(10);
+
             var historyTask = _priceService.GetHistoricalDataAsync(dbSymbol, fetchRange);
             var mongoTask = _fundamentalCollection
                 .Find(f => f.Symbol == dbSymbol)
                 .FirstOrDefaultAsync();
             var summaryTask = _priceService.GetStockFundamentalsAsync(dbSymbol);
 
-            await Task.WhenAll(historyTask, mongoTask, summaryTask);
+            try
+            {
+                await Task.WhenAll(historyTask, mongoTask, summaryTask).WaitAsync(timeout);
+            }
+            catch (TimeoutException)
+            {
+                // Return null or partial data if external providers hang
+                return null;
+            }
+            catch
+            { /* Catch other task faults */
+            }
 
             var history = await historyTask;
             var fundamentals = await mongoTask;
@@ -134,7 +148,7 @@ namespace PortfolioManager.Api.Services
                                     : (decimal?)
                                         Math.Round(
                                             allPrices
-                                                .Skip(i - 49)
+                                                .Skip(Math.Max(0, i - 49))
                                                 .Take(50)
                                                 .Select(x => x.Close)
                                                 .Average(),
@@ -146,7 +160,7 @@ namespace PortfolioManager.Api.Services
                                     : (decimal?)
                                         Math.Round(
                                             allPrices
-                                                .Skip(i - 199)
+                                                .Skip(Math.Max(0, i - 199))
                                                 .Take(200)
                                                 .Select(x => x.Close)
                                                 .Average(),
@@ -289,9 +303,7 @@ namespace PortfolioManager.Api.Services
             {
                 // Use Indian culture for correct comma placement (e.g., 9,66,312)
                 var indianCulture = new System.Globalization.CultureInfo("en-IN");
-
                 string formatted = amount.ToString("N0", indianCulture);
-
                 return $"₹ {formatted}";
             }
 
@@ -302,16 +314,23 @@ namespace PortfolioManager.Api.Services
         {
             string dbSymbol = SanitizeTicker(symbol);
 
-            return await _fundamentalCollection
-                .Find(s => s.Symbol == dbSymbol)
-                .Project<StockFundamental>(
-                    Builders<StockFundamental>
-                        .Projection.Include(s => s.Symbol)
-                        .Include(s => s.CompanyName)
-                        .Include(s => s.Trades)
-                        .Include(s => s.LastTradesUpdate)
-                )
-                .FirstOrDefaultAsync();
+            try
+            {
+                return await _fundamentalCollection
+                    .Find(s => s.Symbol == dbSymbol)
+                    .Project<StockFundamental>(
+                        Builders<StockFundamental>
+                            .Projection.Include(s => s.Symbol)
+                            .Include(s => s.CompanyName)
+                            .Include(s => s.Trades)
+                            .Include(s => s.LastTradesUpdate)
+                    )
+                    .FirstOrDefaultAsync();
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

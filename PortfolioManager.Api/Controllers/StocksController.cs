@@ -92,7 +92,14 @@ namespace PortfolioManager.Api.Controllers
                 var detailsTask = _detailsService.GetStockDetailsAsync(ticker, "1y");
                 var tradesTask = _detailsService.GetStockTradesAsync(ticker);
 
-                await Task.WhenAll(detailsTask, tradesTask);
+                // Add a global timeout to prevent the entire request from hanging indefinitely
+                var timeoutTask = Task.Delay(15000); 
+                var completedTask = await Task.WhenAny(Task.WhenAll(detailsTask, tradesTask), timeoutTask);
+
+                if (completedTask == timeoutTask)
+                {
+                    return StatusCode(504, new { message = "Request timed out while fetching external data" });
+                }
 
                 var details = await detailsTask;
                 var tradesData = await tradesTask;

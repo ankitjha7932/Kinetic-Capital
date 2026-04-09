@@ -56,25 +56,29 @@ public class StockPriceService
             {
                 string tickers = string.Join(",", chunk.Select(SanitizeTicker));
                 string url = $"https://query1.finance.yahoo.com/v7/finance/quote?symbols={tickers}";
-                var response = await _httpClient.GetAsync(url);
-                if (response.IsSuccessStatusCode)
+                try
                 {
-                    using var doc = await JsonDocument.ParseAsync(
-                        await response.Content.ReadAsStreamAsync()
-                    );
-                    var results = doc
-                        .RootElement.GetProperty("quoteResponse")
-                        .GetProperty("result");
-                    foreach (var quote in results.EnumerateArray())
+                    var response = await _httpClient.GetAsync(url);
+                    if (response.IsSuccessStatusCode)
                     {
-                        string symbol = quote.GetProperty("symbol").GetString() ?? "";
-                        decimal price = quote.TryGetProperty("regularMarketPrice", out var p)
-                            ? p.GetDecimal()
-                            : 0m;
-                        if (!string.IsNullOrEmpty(symbol))
-                            prices[symbol] = price;
+                        using var doc = await JsonDocument.ParseAsync(
+                            await response.Content.ReadAsStreamAsync()
+                        );
+                        var results = doc
+                            .RootElement.GetProperty("quoteResponse")
+                            .GetProperty("result");
+                        foreach (var quote in results.EnumerateArray())
+                        {
+                            string symbol = quote.GetProperty("symbol").GetString() ?? "";
+                            decimal price = quote.TryGetProperty("regularMarketPrice", out var p)
+                                ? p.GetDecimal()
+                                : 0m;
+                            if (!string.IsNullOrEmpty(symbol))
+                                prices[symbol] = price;
+                        }
                     }
                 }
+                catch { }
             }
             var duration = marketOpen ? TimeSpan.FromMinutes(30) : TimeSpan.FromHours(12);
             _cache.Set(BATCH_CACHE_KEY, prices, duration);
@@ -135,8 +139,11 @@ public class StockPriceService
                 return null;
             var json = await response.Content.ReadAsStringAsync();
             using var doc = JsonDocument.Parse(json);
-            var result = doc.RootElement.GetProperty("quoteSummary").GetProperty("result");
-            return result.GetArrayLength() > 0 ? result[0].Clone() : null;
+            if (!doc.RootElement.TryGetProperty("quoteSummary", out var qs))
+                return null;
+            if (!qs.TryGetProperty("result", out var res))
+                return null;
+            return res.GetArrayLength() > 0 ? res[0].Clone() : null;
         }
         catch
         {
@@ -170,7 +177,13 @@ public class StockPriceService
             using var doc = await JsonDocument.ParseAsync(
                 await response.Content.ReadAsStreamAsync()
             );
-            var res = doc.RootElement.GetProperty("chart").GetProperty("result")[0];
+            if (!doc.RootElement.TryGetProperty("chart", out var chart))
+                return new HistoricalData(new());
+            var resArr = chart.GetProperty("result");
+            if (resArr.GetArrayLength() == 0)
+                return new HistoricalData(new());
+            var res = resArr[0];
+
             if (!res.TryGetProperty("timestamp", out var tProp))
                 return new HistoricalData(new());
 
