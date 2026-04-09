@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 using PortfolioManager.Api.Models;
 using PortfolioManager.Api.Services;
 
@@ -16,13 +17,15 @@ public class PortfolioController : ControllerBase
     private readonly StockPriceService _priceService;
     private readonly NewsService _newsService;
     private readonly MarketService _marketService;
+    private readonly IMongoDatabase _mongoDb;
 
     public PortfolioController(
         AppDbContext db,
         PortfolioHealthService health,
         StockPriceService priceService,
         NewsService newsService,
-        MarketService marketService
+        MarketService marketService,
+        IMongoDatabase mongoDb
     )
     {
         _db = db;
@@ -30,6 +33,7 @@ public class PortfolioController : ControllerBase
         _priceService = priceService;
         _newsService = newsService;
         _marketService = marketService;
+        _mongoDb = mongoDb;
     }
 
     [HttpGet("summary/{userId}")]
@@ -44,19 +48,18 @@ public class PortfolioController : ControllerBase
         {
             var holdings = await _db.Holdings.Where(h => h.UserId == userId).ToListAsync();
 
-            // 🔥 Minimal change: Semaphore limits concurrency to 3 to prevent 502/CORS crashes
             var semaphore = new SemaphoreSlim(3);
+
+            var stockCollection = _mongoDb.GetCollection<StockFundamental>("StocksDeepData");
 
             var tasks = holdings.Select(async h =>
             {
                 await semaphore.WaitAsync();
                 try
                 {
-                    // 1. Fetch Live Price (Safe Fetch)
                     decimal livePrice = 0;
                     try
                     {
-                        // Added WaitAsync for extra safety against hanging API calls
                         livePrice = await _priceService
                             .GetLivePriceAsync(h.Symbol)
                             .WaitAsync(TimeSpan.FromSeconds(8));
@@ -66,22 +69,21 @@ public class PortfolioController : ControllerBase
                     if (livePrice <= 0)
                         livePrice = h.AvgBuyPrice;
 
-                    // 2. Calculations
                     decimal unrealizedPnl = CalculatePnl(h.Quantity, h.AvgBuyPrice, livePrice);
                     decimal pnlPercent =
                         h.AvgBuyPrice > 0
                             ? Math.Round(((livePrice - h.AvgBuyPrice) / h.AvgBuyPrice) * 100, 2)
                             : 0;
 
-                    decimal change1D = 0.85m; // Mocked
+                    decimal change1D = 0.85m;
 
-                    // 3. Fetch Fundamental Data (DEFENSIVE FETCH)
                     string? marketCapLabel = null;
                     try
                     {
-                        var fundamental = await _db.Stocks.FirstOrDefaultAsync(s =>
-                            s.Symbol == h.Symbol
-                        );
+                        var fundamental = await stockCollection
+                            .Find(s => s.Symbol == h.Symbol)
+                            .FirstOrDefaultAsync();
+
                         if (fundamental != null)
                         {
                             marketCapLabel = GetMarketCapLabel(
@@ -116,7 +118,6 @@ public class PortfolioController : ControllerBase
 
             var holdingResponses = (await Task.WhenAll(tasks)).ToList();
 
-            // 4. Global Portfolio Aggregates
             var totalInv = holdingResponses.Any()
                 ? Math.Round(holdingResponses.Sum(h => h.Quantity * h.AvgBuyPrice), 2)
                 : 0;
