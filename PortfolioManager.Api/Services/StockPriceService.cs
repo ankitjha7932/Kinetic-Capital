@@ -58,7 +58,10 @@ public class StockPriceService
                 string url = $"https://query1.finance.yahoo.com/v7/finance/quote?symbols={tickers}";
                 try
                 {
-                    var response = await _httpClient.GetAsync(url);
+                    // Minimal change: Use WaitAsync to prevent hanging threads on Render
+                    var response = await _httpClient
+                        .GetAsync(url)
+                        .WaitAsync(TimeSpan.FromSeconds(10));
                     if (response.IsSuccessStatusCode)
                     {
                         using var doc = await JsonDocument.ParseAsync(
@@ -134,7 +137,8 @@ public class StockPriceService
             $"https://query2.finance.yahoo.com/v7/finance/quoteSummary/{ticker}?modules=summaryDetail,defaultKeyStatistics,financialData";
         try
         {
-            var response = await _httpClient.GetAsync(url);
+            // Minimal change: Added timeout to prevent gateway hanging
+            var response = await _httpClient.GetAsync(url).WaitAsync(TimeSpan.FromSeconds(10));
             if (!response.IsSuccessStatusCode)
                 return null;
             var json = await response.Content.ReadAsStringAsync();
@@ -170,7 +174,9 @@ public class StockPriceService
             string ticker = SanitizeTicker(symbol);
             string url =
                 $"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range={range}&interval={interval}";
-            var response = await _httpClient.GetAsync(url);
+
+            // Minimal change: Added timeout to prevent sequential hanging
+            var response = await _httpClient.GetAsync(url).WaitAsync(TimeSpan.FromSeconds(10));
             if (!response.IsSuccessStatusCode)
                 return new HistoricalData(new());
 
