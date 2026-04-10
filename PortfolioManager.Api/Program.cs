@@ -3,7 +3,9 @@ using System.Net;
 using System.Text;
 using dotenv.net;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using MongoDB.Driver;
@@ -11,14 +13,10 @@ using PortfolioManager.Api.Models;
 using PortfolioManager.Api.Services;
 
 DotEnv.Load();
-Console.WriteLine(
-    $"DEBUG: BREVO KEY LOADED: {!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("BREVO_API_KEY"))}"
-);
 
 var builder = WebApplication.CreateBuilder(args);
 
-JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
-
+// --- 1. MONGODB CONFIGURATION ---
 var mongoUri =
     Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? builder.Configuration["DATABASE_URL"]
@@ -27,10 +25,6 @@ var mongoUri =
 var settings = MongoClientSettings.FromConnectionString(mongoUri);
 settings.ServerSelectionTimeout = TimeSpan.FromSeconds(30);
 settings.ConnectTimeout = TimeSpan.FromSeconds(30);
-
-// FIX 1: Increase the MongoDB connection pool size. The default is 100, but on a free-tier
-// Render instance with many concurrent async tasks, the pool can exhaust. 50 is a safe
-// explicit value that also prevents Atlas free tier from being overwhelmed.
 settings.MaxConnectionPoolSize = 50;
 
 var mongoClient = new MongoClient(settings);
@@ -42,6 +36,37 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMongoDB(mongoClient, databaseName)
 );
 
+// --- 2. CACHING CONFIGURATION (Redis + Memory) ---
+// Add standard MemoryCache to satisfy services injecting IMemoryCache
+builder.Services.AddMemoryCache();
+
+var redisConnectionString =
+    Environment.GetEnvironmentVariable("REDIS_URL")
+    ?? builder.Configuration["Redis:ConnectionString"];
+
+if (!string.IsNullOrEmpty(redisConnectionString))
+{
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConnectionString;
+        options.InstanceName = "Kinetic_";
+    });
+}
+else
+{
+    // Fallback for IDistributedCache if Redis is missing
+    builder.Services.AddDistributedMemoryCache();
+}
+
+// --- 3. RESPONSE COMPRESSION ---
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+});
+
+// --- 4. CORS & AUTH ---
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(
@@ -57,38 +82,27 @@ builder.Services.AddCors(options =>
     );
 });
 
+JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddMemoryCache();
 
+// --- 5. DEPENDENCY INJECTION ---
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<PortfolioHealthService>();
 builder.Services.AddScoped<StockDetailsService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
-
-// StockPriceService stays Scoped because AddHttpClient<T> registers it as Scoped
-// internally — combining it with AddSingleton causes a DI lifetime conflict that
-// crashes the app on startup. Cache sharing across requests is already handled
-// correctly via IMemoryCache (which IS singleton), using the BATCH_CACHE_KEY constant
-// in StockPriceService. Every Scoped instance reads/writes the same shared IMemoryCache
-// entry, so prices are effectively cached globally without a Singleton service.
-builder.Services.AddScoped<StockPriceService>();
-
 builder.Services.AddScoped<NewsService>();
 builder.Services.AddScoped<IStockAnalysisService, StockAnalysisService>();
 builder.Services.AddScoped<MarketService>();
 builder.Services.AddScoped<IPromptService, PromptService>();
 builder.Services.AddScoped<PeerComparisonService>();
-builder.Services.AddHostedService<MarketScannerWorker>();
 
-// FIX 3: Removed the Scoped registration of StockPriceService from HttpClient builder
+// Registering HttpClient services
 builder
     .Services.AddHttpClient<StockPriceService>()
     .ConfigurePrimaryHttpMessageHandler(() =>
         new HttpClientHandler
         {
-            UseCookies = true,
-            CookieContainer = new CookieContainer(),
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
         }
     );
@@ -98,12 +112,35 @@ builder
     .ConfigurePrimaryHttpMessageHandler(() =>
         new HttpClientHandler
         {
-            UseCookies = true,
-            CookieContainer = new CookieContainer(),
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
         }
     );
 
+builder.Services.AddHostedService<MarketScannerWorker>();
+
+// --- 6. JWT AUTHENTICATION ---
+var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? builder.Configuration["Jwt:Key"];
+if (string.IsNullOrEmpty(jwtKey))
+    throw new Exception("JWT Key missing.");
+
+builder
+    .Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero,
+        };
+    });
+
+builder.Services.AddAuthorization();
+
+// --- 7. SWAGGER ---
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "PortfolioManager", Version = "v1" });
@@ -111,11 +148,12 @@ builder.Services.AddSwaggerGen(c =>
         "Bearer",
         new OpenApiSecurityScheme
         {
-            Description = "JWT Authorization header using the Bearer scheme.",
-            Name = "Authorization",
             In = ParameterLocation.Header,
-            Type = SecuritySchemeType.ApiKey,
-            Scheme = "Bearer",
+            Description = "Please enter token",
+            Name = "Authorization",
+            Type = SecuritySchemeType.Http,
+            BearerFormat = "JWT",
+            Scheme = "bearer",
         }
     );
     c.AddSecurityRequirement(
@@ -136,29 +174,10 @@ builder.Services.AddSwaggerGen(c =>
     );
 });
 
-var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? builder.Configuration["Jwt:Key"];
-if (string.IsNullOrEmpty(jwtKey))
-    throw new Exception("JWT Key is missing. Check your .env file.");
-
-builder
-    .Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-            ValidateIssuer = false,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero,
-        };
-    });
-
-builder.Services.AddAuthorization();
-
 var app = builder.Build();
 
+// --- 8. MIDDLEWARE PIPELINE ---
+app.UseResponseCompression();
 app.UseCors("FrontendPolicy");
 
 if (app.Environment.IsDevelopment())

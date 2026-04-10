@@ -50,6 +50,9 @@ namespace PortfolioManager.Api.Models
         [BsonElement("googleId")]
         public string? GoogleId { get; set; }
 
+        [BsonElement("lastActiveAt")]
+        public DateTime? LastActiveAt { get; set; }
+
         [BsonElement("createdAt")]
         public DateTime? CreatedAt { get; set; } = DateTime.UtcNow;
     }
