@@ -15,6 +15,11 @@ public class StockPriceService
     private const string BATCH_CACHE_KEY = "market_prices_master";
     private const string SPARKLINE_CACHE_KEY = "sparklines_master";
 
+    // FIX 1: Tightened timeouts — Yahoo Finance should respond in <5s or it's being throttled.
+    // 8s is generous enough for slow connections but stops Render from killing the whole process.
+    private static readonly TimeSpan _apiTimeout = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan _batchApiTimeout = TimeSpan.FromSeconds(12);
+
     public StockPriceService(HttpClient httpClient, IMemoryCache cache)
     {
         _httpClient = httpClient;
@@ -27,6 +32,11 @@ public class StockPriceService
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             );
         }
+
+        // FIX 2: Set a global HttpClient timeout as a hard backstop.
+        // This prevents the OS-level socket from hanging indefinitely on Render.
+        if (_httpClient.Timeout == TimeSpan.FromSeconds(100)) // only set if still default
+            _httpClient.Timeout = TimeSpan.FromSeconds(20);
     }
 
     public bool IsMarketOpen()
@@ -43,50 +53,67 @@ public class StockPriceService
     public async Task<Dictionary<string, decimal>> GetBatchPricesAsync(List<string> symbols)
     {
         bool marketOpen = IsMarketOpen();
+
         if (
             !marketOpen
             && _cache.TryGetValue(BATCH_CACHE_KEY, out Dictionary<string, decimal>? closedData)
         )
             return closedData!;
-        if (!_cache.TryGetValue(BATCH_CACHE_KEY, out Dictionary<string, decimal>? prices))
+
+        if (
+            _cache.TryGetValue(BATCH_CACHE_KEY, out Dictionary<string, decimal>? prices)
+            && prices!.Any()
+        )
+            return prices!;
+
+        prices = new Dictionary<string, decimal>();
+
+        // FIX 3: Reduced chunk size from 400 → 50. Yahoo Finance silently drops/throttles
+        // massive batch requests on shared hosting IPs (common on Render). Smaller chunks
+        // are more reliable even though they require more requests.
+        var chunks = symbols.Distinct().Chunk(50);
+
+        foreach (var chunk in chunks)
         {
-            prices = new Dictionary<string, decimal>();
-            var chunks = symbols.Distinct().Chunk(400);
-            foreach (var chunk in chunks)
+            string tickers = string.Join(",", chunk.Select(SanitizeTicker));
+            string url = $"https://query1.finance.yahoo.com/v7/finance/quote?symbols={tickers}";
+            try
             {
-                string tickers = string.Join(",", chunk.Select(SanitizeTicker));
-                string url = $"https://query1.finance.yahoo.com/v7/finance/quote?symbols={tickers}";
-                try
+                var response = await _httpClient.GetAsync(url).WaitAsync(_batchApiTimeout);
+                if (response.IsSuccessStatusCode)
                 {
-                    // Minimal change: Use WaitAsync to prevent hanging threads on Render
-                    var response = await _httpClient
-                        .GetAsync(url)
-                        .WaitAsync(TimeSpan.FromSeconds(10));
-                    if (response.IsSuccessStatusCode)
+                    using var doc = await JsonDocument.ParseAsync(
+                        await response.Content.ReadAsStreamAsync()
+                    );
+                    var results = doc
+                        .RootElement.GetProperty("quoteResponse")
+                        .GetProperty("result");
+                    foreach (var quote in results.EnumerateArray())
                     {
-                        using var doc = await JsonDocument.ParseAsync(
-                            await response.Content.ReadAsStreamAsync()
-                        );
-                        var results = doc
-                            .RootElement.GetProperty("quoteResponse")
-                            .GetProperty("result");
-                        foreach (var quote in results.EnumerateArray())
-                        {
-                            string symbol = quote.GetProperty("symbol").GetString() ?? "";
-                            decimal price = quote.TryGetProperty("regularMarketPrice", out var p)
-                                ? p.GetDecimal()
-                                : 0m;
-                            if (!string.IsNullOrEmpty(symbol))
-                                prices[symbol] = price;
-                        }
+                        string symbol = quote.GetProperty("symbol").GetString() ?? "";
+                        decimal price = quote.TryGetProperty("regularMarketPrice", out var p)
+                            ? p.GetDecimal()
+                            : 0m;
+                        if (!string.IsNullOrEmpty(symbol))
+                            prices[symbol] = price;
                     }
                 }
-                catch { }
             }
-            var duration = marketOpen ? TimeSpan.FromMinutes(30) : TimeSpan.FromHours(12);
-            _cache.Set(BATCH_CACHE_KEY, prices, duration);
+            catch (Exception ex)
+            {
+                // FIX 4: Log the failure but continue — partial data is better than no data.
+                Console.WriteLine($"[BatchPrice] Chunk failed: {ex.Message}");
+            }
+
+            // FIX 5: Small delay between chunks to avoid Yahoo rate-limiting on Render's
+            // shared IP pool. 200ms adds ~1s total for 5 chunks — worth the stability.
+            await Task.Delay(200);
         }
-        return prices ?? new();
+
+        var duration = marketOpen ? TimeSpan.FromMinutes(30) : TimeSpan.FromHours(12);
+        _cache.Set(BATCH_CACHE_KEY, prices, duration);
+
+        return prices;
     }
 
     public async Task<Dictionary<string, List<decimal>>> GetBatchSparklinesAsync(
@@ -94,29 +121,46 @@ public class StockPriceService
     )
     {
         if (
-            !_cache.TryGetValue(
+            _cache.TryGetValue(
                 SPARKLINE_CACHE_KEY,
                 out Dictionary<string, List<decimal>>? sparklines
-            )
+            ) && sparklines!.Any()
         )
-        {
-            sparklines = new Dictionary<string, List<decimal>>();
-            var tasks = symbols
-                .Distinct()
-                .Select(async s =>
+            return sparklines!;
+
+        sparklines = new Dictionary<string, List<decimal>>();
+
+        // FIX 6: Replaced unbounded Task.WhenAll with a semaphore-limited sequential approach.
+        // Firing 20+ Yahoo Finance requests simultaneously from Render gets you rate-limited
+        // or causes socket exhaustion. Max 5 concurrent is safe.
+        var semaphore = new SemaphoreSlim(5);
+        var tasks = symbols
+            .Distinct()
+            .Select(async s =>
+            {
+                await semaphore.WaitAsync();
+                try
                 {
                     var history = await GetHistoricalDataAsync(s, "7d");
                     return new { Symbol = s, Data = history.Prices.Select(p => p.Close).ToList() };
-                });
+                }
+                catch
+                {
+                    return new { Symbol = s, Data = new List<decimal>() };
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
 
-            var results = await Task.WhenAll(tasks);
-            foreach (var r in results)
-                if (r.Data.Any())
-                    sparklines[r.Symbol] = r.Data;
+        var results = await Task.WhenAll(tasks);
+        foreach (var r in results)
+            if (r.Data.Any())
+                sparklines[r.Symbol] = r.Data;
 
-            _cache.Set(SPARKLINE_CACHE_KEY, sparklines, TimeSpan.FromMinutes(30));
-        }
-        return sparklines ?? new();
+        _cache.Set(SPARKLINE_CACHE_KEY, sparklines, TimeSpan.FromMinutes(30));
+        return sparklines;
     }
 
     public async Task<decimal> GetLivePriceAsync(string symbol)
@@ -137,8 +181,7 @@ public class StockPriceService
             $"https://query2.finance.yahoo.com/v7/finance/quoteSummary/{ticker}?modules=summaryDetail,defaultKeyStatistics,financialData";
         try
         {
-            // Minimal change: Added timeout to prevent gateway hanging
-            var response = await _httpClient.GetAsync(url).WaitAsync(TimeSpan.FromSeconds(10));
+            var response = await _httpClient.GetAsync(url).WaitAsync(_apiTimeout);
             if (!response.IsSuccessStatusCode)
                 return null;
             var json = await response.Content.ReadAsStringAsync();
@@ -175,8 +218,7 @@ public class StockPriceService
             string url =
                 $"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range={range}&interval={interval}";
 
-            // Minimal change: Added timeout to prevent sequential hanging
-            var response = await _httpClient.GetAsync(url).WaitAsync(TimeSpan.FromSeconds(10));
+            var response = await _httpClient.GetAsync(url).WaitAsync(_apiTimeout);
             if (!response.IsSuccessStatusCode)
                 return new HistoricalData(new());
 
@@ -199,7 +241,15 @@ public class StockPriceService
             var vol = quote.GetProperty("volume").EnumerateArray().ToList();
 
             var prices = new List<PricePoint>();
-            var istZone = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+
+            // FIX 7: Cross-platform timezone ID — "India Standard Time" is Windows-only.
+            // On Render (Linux), this throws a TimeZoneNotFoundException causing a 500.
+            var tzId = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                System.Runtime.InteropServices.OSPlatform.Windows
+            )
+                ? "India Standard Time"
+                : "Asia/Kolkata";
+            var istZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
 
             for (int i = 0; i < ts.Count; i++)
             {

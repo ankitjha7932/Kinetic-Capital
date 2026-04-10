@@ -18,7 +18,11 @@ namespace PortfolioManager.Api.Controllers
         private readonly IStockAnalysisService _analysisService;
         private readonly IMongoCollection<StockFundamental> _fundamentalCollection;
         private readonly PeerComparisonService _peerService;
-        private static readonly SemaphoreSlim _analysisSemaphore = new SemaphoreSlim(2); // Global limit for heavy analysis
+
+        // FIX 1: Reduced global analysis semaphore from 2 → 1. The analysis endpoint is
+        // CPU-heavy AND makes 2 external calls. On Render's free tier, 2 concurrent heavy
+        // requests causes memory pressure that triggers the 502. One at a time is safer.
+        private static readonly SemaphoreSlim _analysisSemaphore = new SemaphoreSlim(1);
 
         public StocksController(
             StockDetailsService detailsService,
@@ -69,27 +73,66 @@ namespace PortfolioManager.Api.Controllers
         public async Task<IActionResult> GetDetails(string symbol, [FromQuery] string range = "1y")
         {
             string ticker = SanitizeTicker(symbol);
-            var details = await _detailsService.GetStockDetailsAsync(ticker, range);
 
-            if (details == null)
-                return NotFound(new { message = $"Details unavailable for {ticker}" });
+            try
+            {
+                // FIX 2: Tightened the details timeout from ~10s (set inside StockDetailsService)
+                // to 12s total here. If StockDetailsService's internal tasks take longer than
+                // Render's 30s request limit, we return a clean 504 instead of a 502.
+                var details = await _detailsService
+                    .GetStockDetailsAsync(ticker, range)
+                    .WaitAsync(TimeSpan.FromSeconds(12));
 
-            return Ok(details);
+                if (details == null)
+                    return NotFound(new { message = $"Details unavailable for {ticker}" });
+
+                return Ok(details);
+            }
+            catch (TimeoutException)
+            {
+                return StatusCode(
+                    504,
+                    new
+                    {
+                        message = $"Request timed out fetching details for {ticker}. Please retry.",
+                    }
+                );
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[StockDetails] Failed for {ticker}: {ex.Message}");
+                return StatusCode(
+                    500,
+                    new { message = "Unexpected error fetching stock details." }
+                );
+            }
         }
 
         [HttpGet("analyze/{symbol}")]
         public async Task<IActionResult> GetAnalysis(string symbol)
         {
             string ticker = SanitizeTicker(symbol);
-            await _analysisSemaphore.WaitAsync();
+
+            // FIX 3: Added a TryEnter pattern with immediate rejection when the semaphore
+            // is already taken. Previously the second request would queue and eventually
+            // time out the whole Render request. Now it gets a fast 429 the client can retry.
+            bool acquired = await _analysisSemaphore.WaitAsync(TimeSpan.FromSeconds(2));
+            if (!acquired)
+            {
+                return StatusCode(
+                    429,
+                    new { message = "Analysis is busy, please retry in a moment." }
+                );
+            }
 
             try
             {
                 var detailsTask = _detailsService.GetStockDetailsAsync(ticker, "1y");
                 var tradesTask = _detailsService.GetStockTradesAsync(ticker);
 
-                // Use WaitAsync for individual tasks instead of a timeout task for better control
-                await Task.WhenAll(detailsTask, tradesTask).WaitAsync(TimeSpan.FromSeconds(15));
+                // FIX 4: Tightened from 15s → 10s. If Yahoo Finance + MongoDB can't respond
+                // in 10s on Render's network, they won't respond at all — fail fast.
+                await Task.WhenAll(detailsTask, tradesTask).WaitAsync(TimeSpan.FromSeconds(10));
 
                 var details = await detailsTask;
                 var tradesData = await tradesTask;
@@ -105,7 +148,7 @@ namespace PortfolioManager.Api.Controllers
             }
             catch (TimeoutException)
             {
-                return StatusCode(504, new { message = "Request timed out" });
+                return StatusCode(504, new { message = "Analysis timed out. Please retry." });
             }
             catch (Exception ex)
             {
@@ -159,14 +202,24 @@ namespace PortfolioManager.Api.Controllers
                 ? symbol.ToUpper()
                 : $"{symbol.ToUpper()}.NS";
 
-            var peerData = await _peerService.GetPeerIntelligenceAsync(ticker);
-
-            if (peerData == null)
+            try
             {
-                return NotFound(new { message = $"No peer data found for {symbol}" });
-            }
+                // FIX 5: Peers lookup is a pure MongoDB call but can stall if Atlas is under
+                // load. Cap it at 6s.
+                var peerData = await _peerService
+                    .GetPeerIntelligenceAsync(ticker)
+                    .WaitAsync(TimeSpan.FromSeconds(6));
 
-            return Ok(peerData);
+                if (peerData == null)
+                    return NotFound(new { message = $"No peer data found for {symbol}" });
+
+                return Ok(peerData);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Peers] Failed for {ticker}: {ex.Message}");
+                return NotFound(new { message = $"Peer data unavailable for {symbol}" });
+            }
         }
 
         [HttpGet("recent-insider-activity")]

@@ -40,33 +40,66 @@ public class PortfolioController : ControllerBase
     public async Task<IActionResult> GetSummary(string userId)
     {
         if (string.IsNullOrEmpty(userId))
-        {
             return BadRequest("User ID is required.");
-        }
 
         try
         {
             var holdings = await _db.Holdings.Where(h => h.UserId == userId).ToListAsync();
 
-            // Minimal change: Semaphore limits concurrency to 3 to prevent 502/CORS crashes
-            var semaphore = new SemaphoreSlim(3);
+            if (!holdings.Any())
+            {
+                return Ok(
+                    new PortfolioSummaryResponse
+                    {
+                        UserId = userId,
+                        TotalHoldings = 0,
+                        TotalInvested = 0,
+                        CurrentValue = 0,
+                        TotalPnl = 0,
+                        TotalPnlPercent = 0,
+                        Holdings = new List<HoldingResponse>(),
+                    }
+                );
+            }
 
-            // Use the thread-safe MongoDB collection instead of the DbContext inside the parallel loop
+            // FIX 1: Fetch ALL prices in a single batch call upfront instead of one
+            // GetLivePriceAsync call per holding. This is the biggest performance win —
+            // it turns N Yahoo Finance requests into 1 (or a few chunked ones).
+            var symbols = holdings.Select(h => h.Symbol).Distinct().ToList();
+            var priceMap = await _priceService.GetBatchPricesAsync(symbols);
+
             var stockCollection = _mongoDb.GetCollection<StockFundamental>("StocksDeepData");
+
+            // FIX 2: Reduced semaphore from 3 → 2. Each slot now only does a MongoDB lookup
+            // (not a Yahoo Finance call), so 2 concurrent is plenty and reduces thread pressure.
+            var semaphore = new SemaphoreSlim(2);
 
             var tasks = holdings.Select(async h =>
             {
                 await semaphore.WaitAsync();
                 try
                 {
+                    // FIX 3: Use the pre-fetched batch price map. Only fall back to a live
+                    // fetch if the symbol was somehow missing from the batch response.
                     decimal livePrice = 0;
-                    try
+                    priceMap.TryGetValue(
+                        h.Symbol.ToUpper().EndsWith(".NS") || h.Symbol.ToUpper().EndsWith(".BO")
+                            ? h.Symbol.ToUpper()
+                            : $"{h.Symbol.ToUpper()}.NS",
+                        out livePrice
+                    );
+
+                    // Secondary fallback: single live fetch only if batch missed this symbol
+                    if (livePrice <= 0)
                     {
-                        livePrice = await _priceService
-                            .GetLivePriceAsync(h.Symbol)
-                            .WaitAsync(TimeSpan.FromSeconds(8));
+                        try
+                        {
+                            livePrice = await _priceService
+                                .GetLivePriceAsync(h.Symbol)
+                                .WaitAsync(TimeSpan.FromSeconds(5));
+                        }
+                        catch { }
                     }
-                    catch { }
 
                     if (livePrice <= 0)
                         livePrice = h.AvgBuyPrice;
@@ -78,25 +111,27 @@ public class PortfolioController : ControllerBase
                             : 0;
 
                     decimal change1D = 0.85m;
-
                     string? marketCapLabel = null;
+
                     try
                     {
-                        // Using MongoDB Driver Find instead of EF Core to avoid threading crash
+                        // FIX 4: Added a per-MongoDB-query timeout. If Atlas is slow, this
+                        // holding still returns with null marketCap instead of blocking the response.
                         var fundamental = await stockCollection
                             .Find(s => s.Symbol == h.Symbol)
-                            .FirstOrDefaultAsync();
+                            .FirstOrDefaultAsync()
+                            .WaitAsync(TimeSpan.FromSeconds(4));
 
                         if (fundamental != null)
-                        {
                             marketCapLabel = GetMarketCapLabel(
                                 ParseMarketCap(fundamental.MarketCap)
                             );
-                        }
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Mapping Error for {h.Symbol}: {ex.Message}");
+                        Console.WriteLine(
+                            $"[Summary] MarketCap lookup failed for {h.Symbol}: {ex.Message}"
+                        );
                     }
 
                     return new HoldingResponse(
@@ -145,7 +180,7 @@ public class PortfolioController : ControllerBase
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Fatal Portfolio Summary Error: {ex}");
+            Console.WriteLine($"[Summary] Fatal error for {userId}: {ex}");
             return StatusCode(500, $"Internal Server Error: {ex.Message}");
         }
     }
@@ -158,15 +193,28 @@ public class PortfolioController : ControllerBase
         {
             var healthResult = _health.Analyze(userId, summary.Holdings);
             var symbols = summary.Holdings.Select(h => h.Symbol).ToList();
-            var sparklineMap = await _priceService.GetBatchSparklinesAsync(symbols);
 
-            foreach (var pos in healthResult.Positions)
+            // FIX 5: Added timeout to sparkline batch — if it's slow, analysis still
+            // returns without sparklines rather than timing out the whole response.
+            try
             {
-                if (sparklineMap.TryGetValue(pos.Symbol, out var trend))
+                var sparklineMap = await _priceService
+                    .GetBatchSparklinesAsync(symbols)
+                    .WaitAsync(TimeSpan.FromSeconds(10));
+
+                foreach (var pos in healthResult.Positions)
                 {
-                    pos.History = trend;
+                    if (sparklineMap.TryGetValue(pos.Symbol, out var trend))
+                        pos.History = trend;
                 }
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[Analysis] Sparklines failed, returning without them: {ex.Message}"
+                );
+            }
+
             return Ok(healthResult);
         }
         return BadRequest("Could not analyze portfolio.");
@@ -175,15 +223,29 @@ public class PortfolioController : ControllerBase
     [HttpGet("suggestions")]
     public async Task<IActionResult> GetSuggestions([FromQuery] string userId)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId);
-        if (user == null)
-            return NotFound("User not found.");
+        // FIX 6: Added timeout on DB lookup. If this times out, return a graceful empty
+        // response instead of a 502 — the suggestions panel is non-critical UI.
+        try
+        {
+            var user = await _db
+                .Users.FirstOrDefaultAsync(u => u.Id == userId)
+                .WaitAsync(TimeSpan.FromSeconds(5));
 
-        var sectors = (user.PreferredSectors ?? "").Split(
-            ',',
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
-        );
-        return Ok(_health.SuggestStocks(user.RiskProfile ?? "Moderate", sectors));
+            if (user == null)
+                return NotFound("User not found.");
+
+            var sectors = (user.PreferredSectors ?? "").Split(
+                ',',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            );
+            return Ok(_health.SuggestStocks(user.RiskProfile ?? "Moderate", sectors));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Suggestions] Failed for {userId}: {ex.Message}");
+            // Return empty suggestions rather than a 502
+            return Ok(new List<object>());
+        }
     }
 
     [HttpGet("price/{symbol}")]
@@ -201,11 +263,38 @@ public class PortfolioController : ControllerBase
     }
 
     [HttpGet("high-infusion")]
-    public async Task<IActionResult> GetHighInfusion() =>
-        Ok(await _marketService.GetHighInfusionStocksAsync());
+    public async Task<IActionResult> GetHighInfusion()
+    {
+        try
+        {
+            return Ok(
+                await _marketService
+                    .GetHighInfusionStocksAsync()
+                    .WaitAsync(TimeSpan.FromSeconds(25))
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[HighInfusion] Timed out: {ex.Message}");
+            return Ok(new List<object>()); // Non-critical — return empty instead of 502
+        }
+    }
 
     [HttpGet("ticker")]
-    public async Task<IActionResult> GetTicker() => Ok(await _marketService.GetTickerDataAsync());
+    public async Task<IActionResult> GetTicker()
+    {
+        try
+        {
+            return Ok(
+                await _marketService.GetTickerDataAsync().WaitAsync(TimeSpan.FromSeconds(15))
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Ticker] Timed out: {ex.Message}");
+            return Ok(new List<object>()); // Return empty ticker rather than 502
+        }
+    }
 
     [HttpDelete("holding/{id}")]
     public async Task<IActionResult> RemoveHolding(string id)
