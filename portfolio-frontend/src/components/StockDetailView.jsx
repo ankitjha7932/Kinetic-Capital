@@ -63,42 +63,42 @@ export default function StockDetailView() {
   const [showVolumeAlways, setShowVolumeAlways] = useState(true);
 
   const getSentimentConfig = (score) => {
-    if (score >= 70) 
+    if (score >= 70)
       return {
         bg: "bg-emerald-900",
         text: "text-emerald-900",
         light: "bg-emerald-50",
         border: "border-emerald-300",
       };
-    if (score >= 55) 
+    if (score >= 55)
       return {
         bg: "bg-emerald-700",
         text: "text-emerald-700",
         light: "bg-emerald-50/70",
         border: "border-emerald-200",
       };
-    if (score >= 45) 
+    if (score >= 45)
       return {
         bg: "bg-emerald-400",
         text: "text-emerald-500",
         light: "bg-emerald-50/40",
         border: "border-emerald-100",
       };
-    if (score >= 35) 
+    if (score >= 35)
       return {
         bg: "bg-amber-400",
         text: "text-amber-600",
         light: "bg-amber-50",
         border: "border-amber-200",
       };
-    if (score >= 20) 
+    if (score >= 20)
       return {
         bg: "bg-rose-400",
         text: "text-rose-500",
         light: "bg-rose-50/50",
         border: "border-rose-100",
       };
-    return { 
+    return {
       bg: "bg-rose-900",
       text: "text-rose-900",
       light: "bg-rose-50",
@@ -110,35 +110,57 @@ export default function StockDetailView() {
 
   useEffect(() => {
     if (!symbol || symbol === "undefined") return;
+
     const fetchData = async () => {
-      try {
-        setLoading(true);
-        setTrades(null);
-        const [analRes, newsRes, detRes, shRes, peerRes] = await Promise.all([
-          api.get(`/stocks/analyze/${symbol}`),
-          api.get(`/portfolio/news/${symbol}`),
-          api.get(`/stocks/details/${symbol}?range=${range}`),
-          api.get(`/stocks/${symbol}/shareholding`),
-          api.get(`/Stocks/peers/${symbol}`),
-        ]);
-        setAnalysis(analRes.data);
-        setNews(newsRes.data.slice(0, 7));
-        setData(detRes.data);
-        setShareholding(shRes.data);
-        if (peerRes.data)
-          setPeerData({
-            industry: detRes.data.industry || peerRes.data.industry,
-            peers: peerRes.data.peers || peerRes.data,
-          });
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-        setNewsLoading(false);
-        setShLoading(false);
-        setPeerLoading(false);
-      }
+      setLoading(true);
+      setNewsLoading(true);
+      setShLoading(true);
+      setPeerLoading(true);
+      setTrades(null);
+
+      // 🔸 Fail-Soft Fetching: Wrap each call to handle the new backend { success, data } structure
+      const safeFetch = async (url, setter, loadingSetter) => {
+        try {
+          const res = await api.get(url);
+          // Handle the backend's new fail-soft JSON format
+          if (res.data && res.data.success !== false) {
+            setter(res.data.data || res.data);
+          } else {
+            console.warn(`API Soft Failure for ${url}:`, res.data.message);
+            // If it's analysis and it's busy, we keep the message for the UI
+            if (url.includes('analyze')) setter({ sentiment: "Busy", score: 0, message: res.data.message });
+          }
+        } catch (err) {
+          console.error(`Request Failed for ${url}:`, err);
+        } finally {
+          if (loadingSetter) loadingSetter(false);
+        }
+      };
+
+      // Execute all fetches in parallel, but they won't kill each other if one fails
+      await Promise.allSettled([
+        safeFetch(`/stocks/analyze/${symbol}`, setAnalysis, null),
+        safeFetch(`/portfolio/news/${symbol}`, (val) => setNews(val.slice(0, 7)), setNewsLoading),
+        safeFetch(`/stocks/${symbol}/shareholding`, setShareholding, setShLoading),
+        safeFetch(`/Stocks/peers/${symbol}`, (val) => setPeerData(prev => ({ ...prev, peers: val.peers || val })), setPeerLoading),
+        // Primary detail call
+        (async () => {
+          try {
+            const res = await api.get(`/stocks/details/${symbol}?range=${range}`);
+            if (res.data && res.data.success !== false) {
+              const detailData = res.data.data || res.data;
+              setData(detailData);
+              setPeerData(prev => ({ ...prev, industry: detailData.industry }));
+            }
+          } catch (err) {
+            console.error("Critical Detail Fetch Failed", err);
+          } finally {
+            setLoading(false);
+          }
+        })()
+      ]);
     };
+
     fetchData();
   }, [symbol, range]);
 
@@ -146,7 +168,9 @@ export default function StockDetailView() {
     try {
       if (!trades) {
         const res = await api.get(`/stocks/${symbol}/trades`);
-        setTrades(res.data);
+        if (res.data && res.data.success !== false) {
+          setTrades(res.data.data || res.data);
+        }
       }
       setIsTradeModalOpen(true);
     } catch (err) {
@@ -208,7 +232,7 @@ export default function StockDetailView() {
 
   return (
     <div className="w-full max-w-7xl mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6 bg-slate-50 min-h-screen font-sans relative pb-20 overflow-x-hidden">
-      
+
       {/* OPTIMIZED ANALYSIS MODAL - SMALLER AND MORE MODERN */}
       {isAnalysisModalOpen && analysis && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
@@ -223,66 +247,73 @@ export default function StockDetailView() {
                 <div>
                   <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5">Intelligence Core</p>
                   <h2 className={`text-xl sm:text-2xl font-extrabold tracking-tight leading-tight ${sentiment.text}`}>
-                    {analysis.sentiment}
+                    {analysis.sentiment || "Status Unavailable"}
                   </h2>
                 </div>
-                <button 
-                  onClick={() => setIsAnalysisModalOpen(false)} 
+                <button
+                  onClick={() => setIsAnalysisModalOpen(false)}
                   className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"
                 >
                   <X size={20} />
                 </button>
               </div>
 
-              <div className="mb-8 bg-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-100 shadow-inner">
-                <div className="flex justify-between items-end mb-3">
-                  <span className="text-sm font-black text-slate-500 uppercase tracking-widest">Confidence Index</span>
-                  <span className={`text-3xl sm:text-4xl font-extrabold ${sentiment.text}`}>{analysis.score}%</span>
+              {analysis.sentiment === "Busy" ? (
+                <div className="p-10 text-center">
+                  <Loader2 className="animate-spin text-indigo-600 mx-auto mb-4" size={32} />
+                  <p className="font-bold text-slate-600">{analysis.message}</p>
                 </div>
-                <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200/50 shadow-sm">
-                  <div className={`h-full transition-all duration-1000 ${sentiment.bg}`} style={{ width: `${analysis.score}%` }} />
-                </div>
-              </div>
-
-              {/* ENHANCED MATRIX GRID WITH SMALLER CARDS */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
-                {Object.entries(analysis.performanceMatrix || {}).map(([key, val]) => {
-                  if (key === "Handover" || key === "Absorption") return null;
-                  const reasons = analysis.breakdown?.filter((b) => b.pillar.toLowerCase().startsWith(key.toLowerCase().substring(0, 4)));
-                  const isActive = activeInfoKey === key;
-                  return (
-                    <div key={key} className="group relative bg-white p-4 sm:p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all hover:border-indigo-200">
-                      <div className="flex justify-between items-start mb-1.5">
-                        <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">{key}</p>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setActiveInfoKey(isActive ? null : key); }} 
-                          className={`p-1.5 rounded-full transition-all ${isActive ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"}`}
-                        >
-                          <Info size={16} strokeWidth={2.5} />
-                        </button>
-                      </div>
-                      <p className="text-base sm:text-lg font-black text-slate-800 tracking-tight">{val}</p>
-                      
-                      {/* ENHANCED REASON OVERLAY WITH SMALLER TEXT */}
-                      {isActive && (
-                        <div className="absolute inset-0 bg-white/98 backdrop-blur-sm p-5 rounded-xl z-10 flex flex-col justify-center animate-in fade-in zoom-in duration-200 shadow-2xl border-2 border-indigo-500/10">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Analysis Insight</span>
-                            <button onClick={() => setActiveInfoKey(null)} className="p-1 hover:bg-slate-100 rounded-full"><X size={14} className="text-slate-400" /></button>
-                          </div>
-                          <div className="overflow-y-auto max-h-[100px] no-scrollbar">
-                            {reasons?.length > 0 ? reasons.map((r, i) => (
-                              <p key={i} className="text-xs leading-relaxed font-bold text-slate-700 mb-1.5 last:mb-0 bg-slate-50 p-1.5 rounded-md">• {r.explanation}</p>
-                            )) : <p className="text-xs font-bold text-slate-400 italic">No specific data points available.</p>}
-                          </div>
-                        </div>
-                      )}
+              ) : (
+                <>
+                  <div className="mb-8 bg-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-100 shadow-inner">
+                    <div className="flex justify-between items-end mb-3">
+                      <span className="text-sm font-black text-slate-500 uppercase tracking-widest">Confidence Index</span>
+                      <span className={`text-3xl sm:text-4xl font-extrabold ${sentiment.text}`}>{analysis.score}%</span>
                     </div>
-                  );
-                })}
-              </div>
-              <button 
-                onClick={() => setIsAnalysisModalOpen(false)} 
+                    <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200/50 shadow-sm">
+                      <div className={`h-full transition-all duration-1000 ${sentiment.bg}`} style={{ width: `${analysis.score}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+                    {Object.entries(analysis.performanceMatrix || {}).map(([key, val]) => {
+                      if (key === "Handover" || key === "Absorption") return null;
+                      const reasons = analysis.breakdown?.filter((b) => b.pillar.toLowerCase().startsWith(key.toLowerCase().substring(0, 4)));
+                      const isActive = activeInfoKey === key;
+                      return (
+                        <div key={key} className="group relative bg-white p-4 sm:p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all hover:border-indigo-200">
+                          <div className="flex justify-between items-start mb-1.5">
+                            <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">{key}</p>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setActiveInfoKey(isActive ? null : key); }}
+                              className={`p-1.5 rounded-full transition-all ${isActive ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"}`}
+                            >
+                              <Info size={16} strokeWidth={2.5} />
+                            </button>
+                          </div>
+                          <p className="text-base sm:text-lg font-black text-slate-800 tracking-tight">{val}</p>
+
+                          {isActive && (
+                            <div className="absolute inset-0 bg-white/98 backdrop-blur-sm p-5 rounded-xl z-10 flex flex-col justify-center animate-in fade-in zoom-in duration-200 shadow-2xl border-2 border-indigo-500/10">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Analysis Insight</span>
+                                <button onClick={() => setActiveInfoKey(null)} className="p-1 hover:bg-slate-100 rounded-full"><X size={14} className="text-slate-400" /></button>
+                              </div>
+                              <div className="overflow-y-auto max-h-[100px] no-scrollbar">
+                                {reasons?.length > 0 ? reasons.map((r, i) => (
+                                  <p key={i} className="text-xs leading-relaxed font-bold text-slate-700 mb-1.5 last:mb-0 bg-slate-50 p-1.5 rounded-md">• {r.explanation}</p>
+                                )) : <p className="text-xs font-bold text-slate-400 italic">No specific data points available.</p>}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              <button
+                onClick={() => setIsAnalysisModalOpen(false)}
                 className={`w-full py-4 text-white rounded-xl font-black text-sm uppercase shadow-xl ${sentiment.bg} hover:brightness-110 transition-all hover:scale-[1.02] active:scale-95`}
               >
                 Return to Dashboard
@@ -342,7 +373,7 @@ export default function StockDetailView() {
             <h3 className="font-bold text-slate-800 text-xs sm:text-sm uppercase">Latest News</h3>
           </div>
           <div className="overflow-y-auto divide-y divide-slate-50">
-            {news.map((item, idx) => (
+            {news.length > 0 ? news.map((item, idx) => (
               <a key={idx} href={item.url} target="_blank" rel="noopener noreferrer" className="group block p-3 hover:bg-slate-50">
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-[8px] font-black text-indigo-600 uppercase">{item.source}</span>
@@ -352,7 +383,7 @@ export default function StockDetailView() {
                 </div>
                 <h4 className="text-[11px] font-bold text-slate-700 line-clamp-2">{item.title}</h4>
               </a>
-            ))}
+            )) : <p className="text-[10px] p-4 text-slate-400 font-bold italic">No recent news found.</p>}
           </div>
         </div>
       </div>
@@ -411,7 +442,7 @@ export default function StockDetailView() {
 
       <div className="space-y-6 pt-6">
         <div className="flex bg-white p-2.5 rounded-2xl shadow-md border border-slate-100 gap-2 overflow-x-auto no-scrollbar w-full md:w-fit">
-          {[ { id: "quarters", label: "QUARTERS" }, { id: "pl", label: "P&L" }, { id: "balance", label: "BALANCE" }, { id: "cash", label: "CASH" }, ].map((tab) => (
+          {[{ id: "quarters", label: "QUARTERS" }, { id: "pl", label: "P&L" }, { id: "balance", label: "BALANCE" }, { id: "cash", label: "CASH" },].map((tab) => (
             <button key={tab.id} onClick={() => toggleTable(tab.id)} className={`whitespace-nowrap px-6 py-3.5 rounded-xl text-xs sm:text-sm font-black transition-all ${visibleTables[tab.id] ? "bg-indigo-600 text-white shadow-lg scale-105" : "bg-slate-50 text-slate-400"}`}>
               {visibleTables[tab.id] ? <Eye size={12} /> : <EyeOff size={12} />} {tab.label}
             </button>
