@@ -25,10 +25,17 @@ export default function GlobalSearch() {
         setLoading(true);
         try {
           const res = await api.get(`/stocks/search?query=${query}`);
-          setResults(res.data);
+
+          if (res.data && res.data.success) {
+            setResults(res.data.data || []);
+          } else {
+            setResults(Array.isArray(res.data) ? res.data : []);
+          }
+
           setIsOpen(true);
         } catch (err) {
           console.error("Search failed", err);
+          setResults([]); // Reset on error to prevent mapping issues
         }
         setLoading(false);
       } else {
@@ -60,7 +67,7 @@ export default function GlobalSearch() {
         )}
       </div>
 
-      {isOpen && results.length > 0 && (
+      {isOpen && Array.isArray(results) && results.length > 0 && (
         <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2">
           {results.map((stock) => (
             <button

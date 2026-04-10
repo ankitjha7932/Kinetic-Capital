@@ -1,73 +1,75 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { X, Search, BarChart2, TrendingUp, Info, ArrowLeft, Loader2 } from 'lucide-react';
+import { X, Search, BarChart2, ArrowLeft, Loader2, Hash, IndianRupee, Rocket, TrendingUp } from 'lucide-react';
 
 export default function HoldingModal({ userId, isOpen, onClose, onRefresh }) {
     const [query, setQuery] = useState("");
     const [searchResults, setSearchResults] = useState([]);
     const [selectedStock, setSelectedStock] = useState(null);
     const [analysis, setAnalysis] = useState(null);
-    const [isFetchingPrice, setIsFetchingPrice] = useState(false);
+    const [livePrice, setLivePrice] = useState(0); 
+    const [isFetchingData, setIsFetchingData] = useState(false);
+    const [isSearching, setIsSearching] = useState(false);
 
     const [formData, setFormData] = useState({
         quantity: '',
-        avgBuyPrice: '',
+        avgBuyPrice: '', 
         purchaseDate: new Date().toISOString().split('T')[0]
     });
 
-    // FIX: RESET LOGIC
     const handleClose = () => {
+        onClose();
         setQuery("");
         setSearchResults([]);
         setSelectedStock(null);
         setAnalysis(null);
-        setFormData({
-            quantity: '',
-            avgBuyPrice: '',
-            purchaseDate: new Date().toISOString().split('T')[0]
-        });
-        onClose(); // Call the parent close function
+        setLivePrice(0);
+        setFormData({ quantity: '', avgBuyPrice: '', purchaseDate: new Date().toISOString().split('T')[0] });
     };
 
-    // Reset state automatically if the modal is opened/closed from outside
     useEffect(() => {
         if (!isOpen) {
             setQuery("");
             setSearchResults([]);
             setSelectedStock(null);
-            setAnalysis(null);
         }
     }, [isOpen]);
 
-    // 1. Search Logic (Debounced)
     useEffect(() => {
         const delay = setTimeout(async () => {
             if (query.length > 1) {
+                setIsSearching(true);
                 try {
                     const res = await api.get(`/stocks/search?query=${query}`);
-                    setSearchResults(res.data);
-                } catch (err) { console.error("Search failed", err); }
+                    const data = res.data?.success ? res.data.data : (Array.isArray(res.data) ? res.data : []);
+                    setSearchResults(data || []);
+                } catch (err) { 
+                    setSearchResults([]);
+                } finally {
+                    setIsSearching(false);
+                }
             } else { setSearchResults([]); }
         }, 300);
         return () => clearTimeout(delay);
     }, [query]);
 
-    // 2. Selection Logic with Real-Time Price Fetching
     const handleSelectStock = async (stock) => {
         setSelectedStock(stock);
-        setIsFetchingPrice(true);
+        setIsFetchingData(true);
         try {
             const priceRes = await api.get(`/portfolio/price/${stock.symbol}`);
-            setFormData(prev => ({
-                ...prev,
-                avgBuyPrice: priceRes.data.price
+            const marketPrice = priceRes.data.price || 0;
+            setLivePrice(marketPrice);
+            setFormData(prev => ({ 
+                ...prev, 
+                avgBuyPrice: parseFloat(marketPrice).toFixed(2)
             }));
             const analysisRes = await api.get(`/stocks/analyze/${stock.symbol}`);
-            setAnalysis(analysisRes.data);
+            setAnalysis(analysisRes.data.success === false ? null : (analysisRes.data.data || analysisRes.data));
         } catch (err) { 
             console.error("Data fetch failed", err); 
         } finally {
-            setIsFetchingPrice(false);
+            setIsFetchingData(false);
         }
     };
 
@@ -75,68 +77,79 @@ export default function HoldingModal({ userId, isOpen, onClose, onRefresh }) {
         e.preventDefault();
         try {
             const payload = {
-                userId: userId,
+                userId,
                 symbol: selectedStock.symbol,
                 quantity: parseFloat(formData.quantity),
                 avgBuyPrice: parseFloat(formData.avgBuyPrice),
                 purchaseDate: formData.purchaseDate,
-                tags: ""
+                tags: "Equity"
             };
-
             await api.post('/holdings', payload);
-            onRefresh(); 
-            handleClose(); // Use handleClose to ensure a clean state for next time
+            onRefresh();
+            handleClose();
         } catch (err) {
-            alert("Failed to add stock: " + (err.response?.data || err.message));
+            alert("Error: " + (err.response?.data || err.message));
         }
     };
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 z-50 transition-all">
+            <div className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl flex flex-col max-h-[90vh] border border-slate-100">
                 
-                {/* Header */}
-                <div className="p-6 border-b flex justify-between items-center">
-                    <div className="flex items-center gap-3">
+                {/* Simplified Header */}
+                <div className="px-8 py-6 flex justify-between items-center bg-white rounded-t-[2rem] border-b border-slate-50 shrink-0">
+                    <div className="flex items-center gap-4">
                         {selectedStock && (
-                            <button onClick={() => setSelectedStock(null)} className="p-2 hover:bg-slate-100 rounded-full transition">
-                                <ArrowLeft size={20} className="text-slate-600" />
+                            <button onClick={() => setSelectedStock(null)} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all">
+                                <ArrowLeft size={18} className="text-slate-600" />
                             </button>
                         )}
-                        <h2 className="text-xl font-black text-slate-800 tracking-tight">
-                            {selectedStock ? 'Review Position' : 'Search Markets'}
+                        <h2 className="text-xl font-bold text-slate-800 tracking-tight">
+                            {selectedStock ? 'Review Details' : 'Add to Portfolio'}
                         </h2>
                     </div>
-                    {/* UPDATED: Uses handleClose */}
-                    <button onClick={handleClose} className="p-2 hover:bg-slate-100 rounded-full transition"><X size={20} /></button>
+                    <button onClick={handleClose} className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
+                        <X size={22} />
+                    </button>
                 </div>
 
-                <div className="p-8 overflow-y-auto flex-1">
+                <div className="px-8 py-6 overflow-y-auto flex-1 custom-scrollbar">
                     {!selectedStock ? (
-                        /* --- STAGE 1: SEARCH --- */
-                        <div className="space-y-6">
-                            <div className="relative">
-                                <Search className="absolute left-4 top-4 text-slate-400" size={20} />
-                                <input 
-                                    className="w-full pl-12 pr-4 py-4 bg-slate-50 rounded-2xl border-none outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800"
-                                    placeholder="Search 2,000+ Indian Stocks..."
+                        /* --- CLEAN SEARCH VIEW --- */
+                        <div className="space-y-6 animate-in slide-in-from-top-2 duration-300">
+                            <div className="relative group">
+                                <Search className="absolute left-5 top-5 text-slate-400 group-focus-within:text-indigo-600 transition-colors" size={18} />
+                                <input
+                                    className="w-full pl-12 pr-12 py-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-indigo-500/20 focus:bg-white outline-none font-semibold text-slate-800 transition-all placeholder:text-slate-400"
+                                    placeholder="Search by name or ticker..."
                                     autoFocus
                                     value={query}
                                     onChange={e => setQuery(e.target.value)}
                                 />
+                                {isSearching && (
+                                    <div className="absolute inset-y-0 right-5 flex items-center">
+                                        <Loader2 className="animate-spin text-indigo-500" size={18} />
+                                    </div>
+                                )}
                             </div>
+                            
                             <div className="space-y-2">
-                                {searchResults.map(stock => (
-                                    <button 
+                                {searchResults.map((stock) => (
+                                    <button
                                         key={stock.symbol}
                                         onClick={() => handleSelectStock(stock)}
-                                        className="w-full flex justify-between items-center p-4 hover:bg-indigo-50 rounded-2xl transition-all group border border-transparent hover:border-indigo-100"
+                                        className="w-full flex justify-between items-center p-4 bg-white hover:bg-slate-50 rounded-2xl transition-all group border border-slate-100 hover:border-indigo-200"
                                     >
-                                        <div className="text-left">
-                                            <p className="font-bold text-slate-800 group-hover:text-indigo-600">{stock.symbol}</p>
-                                            <p className="text-xs text-slate-400 font-medium">{stock.name}</p>
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center font-bold text-indigo-600 uppercase">
+                                                {stock.symbol.charAt(0)}
+                                            </div>
+                                            <div className="text-left">
+                                                <span className="block font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{stock.symbol}</span>
+                                                <span className="block text-[11px] text-slate-400 font-medium truncate max-w-[180px]">{stock.name}</span>
+                                            </div>
                                         </div>
                                         <BarChart2 size={18} className="text-slate-200 group-hover:text-indigo-400" />
                                     </button>
@@ -144,69 +157,83 @@ export default function HoldingModal({ userId, isOpen, onClose, onRefresh }) {
                             </div>
                         </div>
                     ) : (
-                        /* --- STAGE 2: ADD & ANALYZE --- */
-                        <form onSubmit={handleSubmit} className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h3 className="text-3xl font-black text-slate-800 tracking-tighter">{selectedStock.symbol}</h3>
-                                    <p className="text-slate-500 font-medium">{selectedStock.name}</p>
-                                </div>
-                                <div className="bg-emerald-50 px-4 py-2 rounded-xl text-emerald-600 border border-emerald-100 font-black text-sm uppercase">
-                                    {analysis?.sentiment || 'Bullish'}
+                        /* --- CLEAN INPUT VIEW --- */
+                        <form onSubmit={handleSubmit} className="space-y-6 animate-in zoom-in-95 duration-300">
+                            {/* Stock Identity Card */}
+                            <div className="bg-slate-900 p-8 rounded-3xl relative overflow-hidden shadow-lg">
+                                <div className="absolute top-[-10%] right-[-10%] w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl" />
+                                <div className="relative z-10">
+                                    <div className="flex justify-between items-start mb-6">
+                                        <div>
+                                            <h3 className="text-3xl font-bold text-white tracking-tight">{selectedStock.symbol}</h3>
+                                            <p className="text-slate-400 text-xs font-medium mt-1">{selectedStock.name}</p>
+                                        </div>
+                                        <div className="px-3 py-1 bg-white/10 border border-white/10 rounded-lg backdrop-blur-md">
+                                            <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">{analysis?.sentiment || 'Neutral'}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="space-y-0.5">
+                                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Live Market Price</p>
+                                        {isFetchingData ? (
+                                            <div className="flex items-center gap-2 text-indigo-400 italic font-medium">
+                                                <Loader2 className="animate-spin" size={14} /> Fetching...
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-baseline gap-1.5">
+                                                <span className="text-indigo-400 font-bold text-lg">₹</span>
+                                                <span className="text-white text-4xl font-bold tracking-tight">
+                                                    {Number(livePrice).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
-                            {isFetchingPrice && (
-                                <div className="flex items-center gap-2 text-indigo-500 font-bold text-sm">
-                                    <Loader2 className="animate-spin" size={16} />
-                                    Syncing market price...
-                                </div>
-                            )}
-
-                            <div className="bg-indigo-50 p-6 rounded-[2rem] border border-indigo-100 flex gap-4">
-                                <Info size={20} className="text-indigo-600 shrink-0 mt-1" />
-                                <p className="text-sm text-indigo-900 leading-relaxed font-semibold italic">
-                                    "{analysis?.summary || 'Analyzing current market conditions...'}"
+                            {/* AI Summary Card */}
+                            <div className="bg-emerald-50/60 p-4 rounded-2xl border border-emerald-100 flex gap-3 items-start">
+                                <Rocket size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+                                <p className="text-[13px] text-emerald-900 font-medium leading-relaxed italic">
+                                    "{analysis?.summary || 'Analyzing current market position...'}"
                                 </p>
                             </div>
 
+                            {/* Simplified Inputs */}
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Quantity</label>
+                                <div className="space-y-2">
+                                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1 flex items-center gap-1.5">
+                                        <Hash size={14} className="text-slate-300" /> Quantity
+                                    </label>
                                     <input 
                                         type="number" required
                                         value={formData.quantity}
                                         onChange={e => setFormData({...formData, quantity: e.target.value})}
-                                        className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800"
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500/30 focus:bg-white text-slate-900 font-bold text-xl transition-all"
                                         placeholder="0"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Avg Price</label>
+                                <div className="space-y-2">
+                                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider ml-1 flex items-center gap-1.5">
+                                        <IndianRupee size={14} className="text-slate-300" /> Avg. Price
+                                    </label>
                                     <input 
                                         type="number" step="0.01" required
                                         value={formData.avgBuyPrice}
                                         onChange={e => setFormData({...formData, avgBuyPrice: e.target.value})}
-                                        className="w-full p-4 bg-slate-50 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800"
-                                        placeholder="₹0.00"
+                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:border-indigo-500/30 focus:bg-white text-slate-900 font-bold text-xl transition-all"
+                                        placeholder="0.00"
                                     />
                                 </div>
                             </div>
 
-                            <div className="flex gap-3 pt-2">
-                                {/* UPDATED: Uses handleClose */}
-                                <button 
-                                    type="button" 
-                                    onClick={handleClose}
-                                    className="flex-1 bg-slate-100 text-slate-600 py-5 rounded-3xl font-black text-lg hover:bg-slate-200 transition-all"
-                                >
-                                    Cancel
+                            {/* Action Buttons */}
+                            <div className="flex gap-4 pt-4">
+                                <button type="button" onClick={handleClose} className="flex-1 bg-slate-50 text-slate-500 py-4 rounded-2xl font-bold text-sm hover:bg-slate-100 transition-all">
+                                    Discard
                                 </button>
-                                <button 
-                                    type="submit" 
-                                    className="flex-[2] bg-indigo-600 text-white py-5 rounded-3xl font-black text-lg shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all"
-                                >
-                                    Add to Portfolio
+                                <button type="submit" className="flex-[2] bg-indigo-600 text-white py-4 rounded-2xl font-bold text-sm shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-[0.98] transition-all">
+                                    Add Asset
                                 </button>
                             </div>
                         </form>
