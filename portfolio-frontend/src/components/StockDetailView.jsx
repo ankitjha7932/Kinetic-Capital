@@ -64,104 +64,76 @@ export default function StockDetailView() {
 
   const getSentimentConfig = (score) => {
     if (score >= 70)
-      return {
-        bg: "bg-emerald-900",
-        text: "text-emerald-900",
-        light: "bg-emerald-50",
-        border: "border-emerald-300",
-      };
+      return { bg: "bg-emerald-900", text: "text-emerald-900", light: "bg-emerald-50", border: "border-emerald-300" };
     if (score >= 55)
-      return {
-        bg: "bg-emerald-700",
-        text: "text-emerald-700",
-        light: "bg-emerald-50/70",
-        border: "border-emerald-200",
-      };
+      return { bg: "bg-emerald-700", text: "text-emerald-700", light: "bg-emerald-50/70", border: "border-emerald-200" };
     if (score >= 45)
-      return {
-        bg: "bg-emerald-400",
-        text: "text-emerald-500",
-        light: "bg-emerald-50/40",
-        border: "border-emerald-100",
-      };
+      return { bg: "bg-emerald-400", text: "text-emerald-500", light: "bg-emerald-50/40", border: "border-emerald-100" };
     if (score >= 35)
-      return {
-        bg: "bg-amber-400",
-        text: "text-amber-600",
-        light: "bg-amber-50",
-        border: "border-amber-200",
-      };
+      return { bg: "bg-amber-400", text: "text-amber-600", light: "bg-amber-50", border: "border-amber-200" };
     if (score >= 20)
-      return {
-        bg: "bg-rose-400",
-        text: "text-rose-500",
-        light: "bg-rose-50/50",
-        border: "border-rose-100",
-      };
-    return {
-      bg: "bg-rose-900",
-      text: "text-rose-900",
-      light: "bg-rose-50",
-      border: "border-rose-300",
-    };
+      return { bg: "bg-rose-400", text: "text-rose-500", light: "bg-rose-50/50", border: "border-rose-100" };
+    return { bg: "bg-rose-900", text: "text-rose-900", light: "bg-rose-50", border: "border-rose-300" };
   };
 
   const sentiment = getSentimentConfig(analysis?.score || 0);
 
+  // 🔸 REUSABLE FETCH HELPER
+  const safeFetch = async (url, setter, loadingSetter) => {
+    try {
+      const res = await api.get(url);
+      if (res.data && res.data.success !== false) {
+        setter(res.data.data || res.data);
+      } else {
+        if (url.includes('analyze')) setter({ sentiment: "Busy", score: 0, message: res.data.message });
+      }
+    } catch (err) {
+      console.error(`Request Failed for ${url}:`, err);
+    } finally {
+      if (loadingSetter) loadingSetter(false);
+    }
+  };
+
   useEffect(() => {
     if (!symbol || symbol === "undefined") return;
 
-    const fetchData = async () => {
-      setLoading(true);
+    const fetchStockBasics = async () => {
       setNewsLoading(true);
       setShLoading(true);
       setPeerLoading(true);
       setTrades(null);
 
-      // 🔸 Fail-Soft Fetching: Wrap each call to handle the new backend { success, data } structure
-      const safeFetch = async (url, setter, loadingSetter) => {
-        try {
-          const res = await api.get(url);
-          // Handle the backend's new fail-soft JSON format
-          if (res.data && res.data.success !== false) {
-            setter(res.data.data || res.data);
-          } else {
-            console.warn(`API Soft Failure for ${url}:`, res.data.message);
-            // If it's analysis and it's busy, we keep the message for the UI
-            if (url.includes('analyze')) setter({ sentiment: "Busy", score: 0, message: res.data.message });
-          }
-        } catch (err) {
-          console.error(`Request Failed for ${url}:`, err);
-        } finally {
-          if (loadingSetter) loadingSetter(false);
-        }
-      };
-
-      // Execute all fetches in parallel, but they won't kill each other if one fails
       await Promise.allSettled([
         safeFetch(`/stocks/analyze/${symbol}`, setAnalysis, null),
         safeFetch(`/portfolio/news/${symbol}`, (val) => setNews(val.slice(0, 7)), setNewsLoading),
         safeFetch(`/stocks/${symbol}/shareholding`, setShareholding, setShLoading),
         safeFetch(`/Stocks/peers/${symbol}`, (val) => setPeerData(prev => ({ ...prev, peers: val.peers || val })), setPeerLoading),
-        // Primary detail call
-        (async () => {
-          try {
-            const res = await api.get(`/stocks/details/${symbol}?range=${range}`);
-            if (res.data && res.data.success !== false) {
-              const detailData = res.data.data || res.data;
-              setData(detailData);
-              setPeerData(prev => ({ ...prev, industry: detailData.industry }));
-            }
-          } catch (err) {
-            console.error("Critical Detail Fetch Failed", err);
-          } finally {
-            setLoading(false);
-          }
-        })()
       ]);
     };
 
-    fetchData();
+    fetchStockBasics();
+  }, [symbol]);
+
+  useEffect(() => {
+    if (!symbol || symbol === "undefined") return;
+
+    const fetchChartOnly = async () => {
+      setLoading(true);
+      try {
+        const res = await api.get(`/stocks/details/${symbol}?range=${range}`);
+        if (res.data && res.data.success !== false) {
+          const detailData = res.data.data || res.data;
+          setData(detailData);
+          setPeerData(prev => ({ ...prev, industry: detailData.industry || prev?.industry }));
+        }
+      } catch (err) {
+        console.error("Chart Fetch Failed", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchChartOnly();
   }, [symbol, range]);
 
   const handleOpenTrades = async () => {
@@ -178,15 +150,11 @@ export default function StockDetailView() {
     }
   };
 
-  const toggleTable = (id) =>
-    setVisibleTables((prev) => ({ ...prev, [id]: !prev[id] }));
+  const toggleTable = (id) => setVisibleTables((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const formatNum = (val, decimals = 2) => {
     if (val === null || val === undefined || val === "N/A") return "N/A";
-    return Number(val).toLocaleString("en-IN", {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    });
+    return Number(val).toLocaleString("en-IN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   };
 
   const formatVolumeLabel = (val) => {
@@ -200,46 +168,29 @@ export default function StockDetailView() {
   const isPeriodPositive = data?.periodReturn >= 0;
 
   const themeColor = sentiment.text
-    .replace("emerald-900", "064e3b")
-    .replace("emerald-700", "047857")
-    .replace("emerald-500", "10b981")
-    .replace("amber-600", "d97706")
-    .replace("rose-500", "f43f5e")
-    .replace("rose-900", "881337")
+    .replace("emerald-900", "064e3b").replace("emerald-700", "047857").replace("emerald-500", "10b981")
+    .replace("amber-600", "d97706").replace("rose-500", "f43f5e").replace("rose-900", "881337")
     .replace("text-", "#");
 
   const renderDateTick = (tickItem) => {
     const date = new Date(tickItem);
-    if (range === "1d")
-      return date.toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      });
-    return date.toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "2-digit",
-    });
+    if (range === "1d") return date.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+    return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
   };
 
-  if (loading && !data)
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
-        <Loader2 className="animate-spin text-indigo-600" size={40} />
-      </div>
-    );
+  if (loading && !data) return (
+    <div className="flex h-screen items-center justify-center bg-slate-50">
+      <Loader2 className="animate-spin text-indigo-600" size={40} />
+    </div>
+  );
 
   return (
     <div className="w-full max-w-7xl mx-auto p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6 bg-slate-50 min-h-screen font-sans relative pb-20 overflow-x-hidden">
 
-      {/* OPTIMIZED ANALYSIS MODAL - SMALLER AND MORE MODERN */}
+      {/* OPTIMIZED ANALYSIS MODAL */}
       {isAnalysisModalOpen && analysis && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
-            onClick={() => setIsAnalysisModalOpen(false)}
-          />
+          <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md" onClick={() => setIsAnalysisModalOpen(false)} />
           <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 animate-in fade-in zoom-in duration-300">
             <div className={`h-2 w-full ${sentiment.bg}`} />
             <div className="p-6 sm:p-8">
@@ -250,10 +201,7 @@ export default function StockDetailView() {
                     {analysis.sentiment || "Status Unavailable"}
                   </h2>
                 </div>
-                <button
-                  onClick={() => setIsAnalysisModalOpen(false)}
-                  className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 transition-colors"
-                >
+                <button onClick={() => setIsAnalysisModalOpen(false)} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
                   <X size={20} />
                 </button>
               </div>
@@ -284,15 +232,12 @@ export default function StockDetailView() {
                         <div key={key} className="group relative bg-white p-4 sm:p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all hover:border-indigo-200">
                           <div className="flex justify-between items-start mb-1.5">
                             <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">{key}</p>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setActiveInfoKey(isActive ? null : key); }}
-                              className={`p-1.5 rounded-full transition-all ${isActive ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"}`}
-                            >
+                            <button onClick={(e) => { e.stopPropagation(); setActiveInfoKey(isActive ? null : key); }}
+                              className={`p-1.5 rounded-full transition-all ${isActive ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"}`}>
                               <Info size={16} strokeWidth={2.5} />
                             </button>
                           </div>
                           <p className="text-base sm:text-lg font-black text-slate-800 tracking-tight">{val}</p>
-
                           {isActive && (
                             <div className="absolute inset-0 bg-white/98 backdrop-blur-sm p-5 rounded-xl z-10 flex flex-col justify-center animate-in fade-in zoom-in duration-200 shadow-2xl border-2 border-indigo-500/10">
                               <div className="flex justify-between items-center mb-2">
@@ -312,10 +257,8 @@ export default function StockDetailView() {
                   </div>
                 </>
               )}
-              <button
-                onClick={() => setIsAnalysisModalOpen(false)}
-                className={`w-full py-4 text-white rounded-xl font-black text-sm uppercase shadow-xl ${sentiment.bg} hover:brightness-110 transition-all hover:scale-[1.02] active:scale-95`}
-              >
+              <button onClick={() => setIsAnalysisModalOpen(false)}
+                className={`w-full py-4 text-white rounded-xl font-black text-sm uppercase shadow-xl ${sentiment.bg} hover:brightness-110 transition-all hover:scale-[1.02] active:scale-95`}>
                 Return to Dashboard
               </button>
             </div>
@@ -373,17 +316,16 @@ export default function StockDetailView() {
             <h3 className="font-bold text-slate-800 text-xs sm:text-sm uppercase">Latest News</h3>
           </div>
           <div className="overflow-y-auto divide-y divide-slate-50">
-            {news.length > 0 ? news.map((item, idx) => (
-              <a key={idx} href={item.url} target="_blank" rel="noopener noreferrer" className="group block p-3 hover:bg-slate-50">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-[8px] font-black text-indigo-600 uppercase">{item.source}</span>
-                  <span className="text-[8px] font-bold text-slate-400">
-                    {new Date(item.publishedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
-                  </span>
-                </div>
-                <h4 className="text-[11px] font-bold text-slate-700 line-clamp-2">{item.title}</h4>
-              </a>
-            )) : <p className="text-[10px] p-4 text-slate-400 font-bold italic">No recent news found.</p>}
+            {newsLoading ? <div className="p-4 flex justify-center"><Loader2 className="animate-spin text-slate-300" size={20} /></div> :
+              news.length > 0 ? news.map((item, idx) => (
+                <a key={idx} href={item.url} target="_blank" rel="noopener noreferrer" className="group block p-3 hover:bg-slate-50">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[8px] font-black text-indigo-600 uppercase">{item.source}</span>
+                    <span className="text-[8px] font-bold text-slate-400">{new Date(item.publishedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</span>
+                  </div>
+                  <h4 className="text-[11px] font-bold text-slate-700 line-clamp-2">{item.title}</h4>
+                </a>
+              )) : <p className="text-[10px] p-4 text-slate-400 font-bold italic">No recent news found.</p>}
           </div>
         </div>
       </div>
