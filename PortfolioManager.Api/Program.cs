@@ -5,12 +5,12 @@ using dotenv.net;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using MongoDB.Driver;
 using PortfolioManager.Api.Models;
 using PortfolioManager.Api.Services;
+using PortfolioManager.Api.Workers;
 
 DotEnv.Load();
 
@@ -21,7 +21,6 @@ var mongoUri =
     Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? builder.Configuration["DATABASE_URL"]
     ?? "mongodb://localhost:27017";
-
 var settings = MongoClientSettings.FromConnectionString(mongoUri);
 settings.ServerSelectionTimeout = TimeSpan.FromSeconds(30);
 settings.ConnectTimeout = TimeSpan.FromSeconds(30);
@@ -36,14 +35,11 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMongoDB(mongoClient, databaseName)
 );
 
-// --- 2. CACHING CONFIGURATION (Redis + Memory) ---
-// Add standard MemoryCache to satisfy services injecting IMemoryCache
+// --- 2. CACHING CONFIGURATION ---
 builder.Services.AddMemoryCache();
-
 var redisConnectionString =
     Environment.GetEnvironmentVariable("REDIS_URL")
     ?? builder.Configuration["Redis:ConnectionString"];
-
 if (!string.IsNullOrEmpty(redisConnectionString))
 {
     builder.Services.AddStackExchangeRedisCache(options =>
@@ -54,7 +50,6 @@ if (!string.IsNullOrEmpty(redisConnectionString))
 }
 else
 {
-    // Fallback for IDistributedCache if Redis is missing
     builder.Services.AddDistributedMemoryCache();
 }
 
@@ -93,11 +88,12 @@ builder.Services.AddScoped<StockDetailsService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<NewsService>();
 builder.Services.AddScoped<IStockAnalysisService, StockAnalysisService>();
-builder.Services.AddScoped<MarketService>();
 builder.Services.AddScoped<IPromptService, PromptService>();
 builder.Services.AddScoped<PeerComparisonService>();
 
-// Registering HttpClient services
+builder.Services.AddHttpClient<MarketService>();
+builder.Services.AddSingleton<MarketService>();
+
 builder
     .Services.AddHttpClient<StockPriceService>()
     .ConfigurePrimaryHttpMessageHandler(() =>
@@ -106,7 +102,6 @@ builder
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
         }
     );
-
 builder
     .Services.AddHttpClient<NewsService>()
     .ConfigurePrimaryHttpMessageHandler(() =>
@@ -137,7 +132,6 @@ builder
             ClockSkew = TimeSpan.Zero,
         };
     });
-
 builder.Services.AddAuthorization();
 
 // --- 7. SWAGGER ---

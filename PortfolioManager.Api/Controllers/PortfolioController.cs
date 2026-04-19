@@ -260,22 +260,12 @@ public class PortfolioController : ControllerBase
         }
     }
 
-    [HttpGet("high-infusion")]
-    public async Task<IActionResult> GetHighInfusion()
+    [HttpGet("index-movers")]
+    public async Task<IActionResult> GetMovers([FromQuery] string index = "NIFTY 500")
     {
-        try
-        {
-            return Ok(
-                await _marketService
-                    .GetHighInfusionStocksAsync()
-                    .WaitAsync(TimeSpan.FromSeconds(25))
-            );
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[HighInfusion] Failed");
-            return Ok(new List<object>());
-        }
+        // index can be: "NIFTY 100", "NIFTY 500", "MIDCAP 100", "SMALLCAP 100", "NIFTY TOTAL MARKET"
+        var result = await _marketService.GetIndexMoversAsync(index);
+        return Ok(result);
     }
 
     [HttpGet("ticker")]
