@@ -2,249 +2,230 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import PositionsList from "../components/PositionsList";
-import {
-  TrendingUp,
-  TrendingDown,
-  Activity,
-  Lightbulb,
-  AlertCircle,
-  Zap,
-  Loader2,
-} from "lucide-react";
+import MarketMoversGrid from "../components/MarketMoversGrid";
+import ReturnLeaders from "../components/ReturnLeaders";
+import { Activity, TrendingUp, Target, Loader2, ArrowUpRight, ArrowDownRight } from "lucide-react";
+
+const DEFAULT_INDEX = "NIFTY 100";
 
 export default function Dashboard({ userId }) {
-  const [data, setData] = useState({
-    summary: null,
-    analysis: null,
-    suggestions: [],
-  });
-  const [infusionStocks, setInfusionStocks] = useState([]);
+  const [data, setData] = useState({ summary: null, analysis: null });
+  const [marketData, setMarketData] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(DEFAULT_INDEX);
   const [loading, setLoading] = useState(true);
-  const [infusionLoading, setInfusionLoading] = useState(false);
   const navigate = useNavigate();
 
-  const fetchData = async () => {
-    if (!userId || userId === "undefined" || userId === "") return;
-    setLoading(true);
+  const fetchMarket = async (index) => {
     try {
-      const [sum, ana, sug] = await Promise.all([
+      const res = await api.get(`Portfolio/index-movers?index=${encodeURIComponent(index)}`);
+      setMarketData(res.data.data || res.data);
+    } catch (_) {}
+  };
+
+  const fetchPortfolio = async () => {
+    if (!userId) return;
+    try {
+      const [sum, ana] = await Promise.all([
         api.get(`/portfolio/summary/${userId}`),
         api.get(`/portfolio/analysis?userId=${userId}`),
-        api.get(`/portfolio/suggestions?userId=${userId}`),
       ]);
-      setData({
-        summary: sum.data,
-        analysis: ana.data,
-        suggestions: sug.data || [],
-      });
-      setLoading(false);
-
-      // Fetch momentum separately to avoid blocking main UI
-      setInfusionLoading(true);
-      api
-        .get("/portfolio/high-infusion")
-        .then((res) => setInfusionStocks(res.data || []))
-        .catch((err) => console.error("Momentum error:", err))
-        .finally(() => setInfusionLoading(false));
-    } catch (err) {
-      console.error("Fetch error:", err);
-      setLoading(false);
-    }
+      setData({ summary: sum.data, analysis: ana.data });
+    } catch (_) {}
   };
 
   useEffect(() => {
-    if (userId && userId !== "undefined") fetchData();
+    (async () => {
+      setLoading(true);
+      await Promise.all([fetchPortfolio(), fetchMarket(DEFAULT_INDEX)]);
+      setLoading(false);
+    })();
   }, [userId]);
+
+  const handleIndexChange = (index) => {
+    setSelectedIndex(index);
+    fetchMarket(index);
+  };
 
   if (loading)
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+        <Loader2 size={32} style={{ color: "#4f46e5", animation: "spin 1s linear infinite" }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
 
+  const s = data.summary;
+  
+  // Calculate P&L Percentage
+  const pnlPct = s?.totalInvested > 0 
+    ? (s.totalPnl / s.totalInvested) * 100 
+    : 0;
+
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700">
-      {/* --- STAT CARDS --- */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+    <div style={{
+      padding: "clamp(16px, 4vw, 32px)",
+      maxWidth: 1400,
+      margin: "0 auto",
+      backgroundColor: "#fcfcfd",
+      minHeight: "100vh"
+    }}>
+
+      {/* ── 1. STATS ROW ── */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+        gap: 16,
+        marginBottom: 32
+      }}>
         <StatCard
-          title="Invested"
-          value={`₹${(data.summary?.totalInvested || 0).toLocaleString()}`}
-          icon={<Activity size={20} className="text-blue-500" />}
+          label="Invested"
+          value={`₹${s?.totalInvested?.toLocaleString("en-IN") ?? "0"}`}
+          icon={<Target size={18} />}
         />
         <StatCard
-          title="Current"
-          value={`₹${(data.summary?.currentValue || 0).toLocaleString()}`}
-          icon={<TrendingUp size={20} className="text-indigo-500" />}
+          label="Current value"
+          value={`₹${s?.currentValue?.toLocaleString("en-IN") ?? "0"}`}
+          icon={<Activity size={18} />}
         />
         <StatCard
-          title="Total P&L"
-          value={`₹${(data.summary?.totalPnl || 0).toLocaleString()}`}
-          isLoss={(data.summary?.totalPnl || 0) < 0}
-          icon={
-            (data.summary?.totalPnl || 0) >= 0 ? (
-              <TrendingUp size={20} className="text-green-500" />
-            ) : (
-              <TrendingDown size={20} className="text-red-500" />
-            )
-          }
+          label="Total P&L"
+          value={`₹${s?.totalPnl?.toLocaleString("en-IN") ?? "0"}`}
+          percentage={pnlPct}
+          icon={s?.totalPnl >= 0 ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
+          accent={s?.totalPnl >= 0 ? "green" : "red"}
         />
-        <div className="bg-indigo-600 p-6 rounded-2xl text-white shadow-lg shadow-indigo-200">
-          <p className="text-xs opacity-80 uppercase font-bold tracking-wider">
-            Portfolio Score
-          </p>
-          <p className="text-4xl font-black">{data.analysis?.score || 0}</p>
-          <p className="text-sm font-medium">
-            {data.analysis?.ratingBand || "Neutral"} Health
-          </p>
-        </div>
       </div>
 
-      {/* --- MARKET MOMENTUM SECTION --- */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between px-2">
-          <h3 className="text-xl font-bold flex items-center gap-2">
-            <Zap className="text-amber-500 fill-amber-500" size={20} /> Cash
-            Flood
-          </h3>
-          {infusionLoading && (
-            <Loader2 size={16} className="animate-spin text-indigo-500" />
-          )}
-        </div>
-        <div className="flex overflow-x-auto pb-4 gap-4 no-scrollbar min-h-[140px]">
-          {infusionStocks.map((stock) => (
-            <div
-              key={stock.symbol}
-              onClick={() => navigate(`/stock/${stock.symbol}`)}
-              className="flex-shrink-0 w-60 p-5 bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-            >
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <p className="font-black text-slate-800 group-hover:text-indigo-600 tracking-tight">
-                    {stock.symbol}
-                  </p>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase">
-                    Cap: ₹{stock.marketCapCr} Cr
-                  </p>
-                </div>
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-lg ${
-                    stock.changePercent >= 0
-                      ? "bg-emerald-50 text-emerald-600"
-                      : "bg-rose-50 text-rose-600"
-                  }`}
-                >
-                  {stock.changePercent > 0 ? "+" : ""}
-                  {stock.changePercent}%
-                </span>
-              </div>
-              <div className="flex justify-between items-end border-t border-slate-50 pt-3">
-                <div>
-                  <p className="text-[9px] font-black text-indigo-500 uppercase tracking-wider">
-                    Market Shift
-                  </p>
-                  <p className="text-lg font-black">{stock.handoverRatio}%</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                    Money Flow
-                  </p>
-                  <p className="text-xs font-black text-slate-700">
-                    ₹{stock.valueTradedCr} Cr
-                  </p>
-                </div>
-              </div>
-            </div>
-          ))}
-          {!infusionLoading && infusionStocks.length === 0 && (
-            <p className="text-slate-400 text-sm italic px-2">
-              Scanning market for major handovers...
-            </p>
-          )}
-        </div>
+      {/* ── 2. MARKET SECTION ── */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))",
+        gap: 24,
+        marginBottom: 32
+      }}>
+        <SectionCard>
+          <ReturnLeaders
+            data={marketData}
+            selectedIndex={selectedIndex}
+            onIndexChange={handleIndexChange}
+            onSelectStock={(sym) => navigate(`/stock/${sym}`)}
+          />
+        </SectionCard>
+
+        <SectionCard>
+          <MarketMoversGrid
+            data={marketData}
+            onSelectStock={(sym) => navigate(`/stock/${sym}`)}
+          />
+        </SectionCard>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* AI Recommendations */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-          <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-            <Lightbulb className="text-yellow-500" /> AI Recommendations
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(data.suggestions || []).length > 0 ? (
-              data.suggestions.map((s, i) => (
-                <div
-                  key={i}
-                  className="p-4 bg-slate-50 rounded-xl border border-slate-100 border-l-4 border-l-indigo-500"
-                >
-                  <p className="font-black text-indigo-700">{s.symbol}</p>
-                  <p className="text-sm text-slate-600 my-2 leading-relaxed">
-                    {s.rationale}
-                  </p>
-                  <div className="text-[10px] font-bold uppercase text-slate-400">
-                    Suggested: {s.suggestedAllocationPercent}%
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-slate-400 text-sm italic">
-                No suggestions available yet.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Health Warnings */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-          <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-            <AlertCircle className="text-red-500" /> Health Warnings
-          </h3>
-          <div className="space-y-3">
-            {(data.analysis?.warnings || []).length > 0 ? (
-              data.analysis.warnings.map((w, i) => (
-                <div
-                  key={i}
-                  className="p-3 bg-red-50 text-red-700 rounded-xl text-xs font-medium border border-red-100"
-                >
-                  • {w}
-                </div>
-              ))
-            ) : (
-              <p className="text-slate-400 text-xs italic">
-                Your portfolio looks healthy!
-              </p>
-            )}
-          </div>
-        </div>
+      {/* ── 3. POSITIONS ── */}
+      <div style={{ background: "#fff", border: "1px solid #f1f5f9", borderRadius: 24, padding: "8px" }}>
+        <PositionsList
+          positions={data.analysis?.positions || []}
+          onRefresh={fetchPortfolio}
+          onSelectStock={(symbol) => navigate(`/stock/${symbol}`)}
+        />
       </div>
-
-      {/* 🚀 FIXED: Passing 'positions' from 'analysis' instead of 'holdings' from 'summary' */}
-      <PositionsList
-        positions={data.analysis?.positions || []}
-        onRefresh={fetchData}
-        onSelectStock={(symbol) => navigate(`/stock/${symbol}`)}
-      />
     </div>
   );
 }
 
-function StatCard({ title, value, icon, isLoss }) {
+/* ── Sub-components ── */
+
+function SectionCard({ children }) {
   return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-      <div className="flex justify-between items-start">
-        <div>
-          <p className="text-xs text-slate-400 uppercase font-bold tracking-widest mb-1">
-            {title}
-          </p>
-          <p
-            className={`text-2xl font-black ${
-              isLoss ? "text-red-600" : "text-slate-800"
-            }`}
-          >
-            {value}
-          </p>
+    <div style={{
+      background: "#fff",
+      border: "1px solid #f1f5f9",
+      borderRadius: 24,
+      padding: "20px",
+      width: "100%",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.02)"
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function StatCard({ label, value, icon, percentage, accent }) {
+  const isPositive = accent === "green";
+  const isNegative = accent === "red";
+  
+  const valueColor = isPositive ? "#10b981" : isNegative ? "#ef4444" : "#0f172a";
+  const iconBg = isPositive ? "#ecfdf5" : isNegative ? "#fef2f2" : "#f5f7ff";
+  const iconColor = isPositive ? "#10b981" : isNegative ? "#ef4444" : "#4f46e5";
+
+  return (
+    <div style={{
+      background: "#fff",
+      border: "1px solid #f1f5f9",
+      borderRadius: 20,
+      padding: "20px",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      transition: "transform 0.2s ease, box-shadow 0.2s ease",
+      cursor: "default"
+    }}
+    onMouseEnter={e => {
+      e.currentTarget.style.transform = "translateY(-2px)";
+      e.currentTarget.style.boxShadow = "0 10px 20px rgba(0,0,0,0.04)";
+    }}
+    onMouseLeave={e => {
+      e.currentTarget.style.transform = "none";
+      e.currentTarget.style.boxShadow = "none";
+    }}
+    >
+      <div>
+        <div style={{
+          fontSize: 11,
+          fontWeight: 700,
+          color: "#94a3b8",
+          textTransform: "uppercase",
+          letterSpacing: "0.8px",
+          marginBottom: 6
+        }}>
+          {label}
         </div>
-        <div className="p-2 bg-slate-50 rounded-xl">{icon}</div>
+
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <span style={{
+            fontSize: "clamp(18px, 2.2vw, 24px)",
+            fontWeight: 800,
+            color: valueColor,
+            letterSpacing: "-0.5px"
+          }}>
+            {value}
+          </span>
+          
+          {percentage !== undefined && (
+            <span style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: valueColor,
+              opacity: 0.85
+            }}>
+              ({percentage >= 0 ? "+" : ""}{percentage.toFixed(2)}%)
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div style={{
+        width: 42,
+        height: 42,
+        borderRadius: 12,
+        background: iconBg,
+        color: iconColor,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        transition: "transform 0.3s ease"
+      }}>
+        {icon}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom"; // 👈 Added Link for navigation
+import { Link } from "react-router-dom";
 import { TrendingUp, TrendingDown, Loader2 } from "lucide-react";
 import api from "../api/axios";
 
@@ -11,16 +11,13 @@ const KineticTape = () => {
     const fetchTicker = async () => {
       try {
         const res = await api.get("/portfolio/ticker");
-        if (res.data && res.data.length > 0) {
-          setStocks(res.data);
-        }
+        if (res.data?.length > 0) setStocks(res.data);
       } catch (err) {
         console.error("Ticker fetch error:", err);
       } finally {
         setLoading(false);
       }
     };
-
     fetchTicker();
     const interval = setInterval(fetchTicker, 60000 * 15);
     return () => clearInterval(interval);
@@ -28,8 +25,9 @@ const KineticTape = () => {
 
   if (loading && stocks.length === 0) {
     return (
-      <div className="w-full bg-slate-950 h-10 flex items-center justify-center border-b border-white/5">
-        <Loader2 size={14} className="animate-spin text-slate-700" />
+      <div className="kt-root">
+        <Loader2 size={12} className="kt-loader" />
+        <style>{styles}</style>
       </div>
     );
   }
@@ -39,64 +37,102 @@ const KineticTape = () => {
   const displayItems = [...stocks, ...stocks, ...stocks];
 
   return (
-    <div className="w-full bg-slate-950 text-white overflow-hidden h-10 flex items-center border-b border-white/5 relative z-[100] select-none shadow-2xl">
-      <div className="flex animate-kinetic-scroll whitespace-nowrap">
-        {displayItems.map((stock, idx) => (
-          /* 🚀 Wrapped in Link for Navigation */
-          <Link
-            key={`${stock.symbol}-${idx}`}
-            to={`/stock/${stock.symbol}`}
-            className="inline-flex items-center px-10 gap-4 border-r border-white/10 group hover:bg-white/10 transition-all cursor-pointer no-underline"
-          >
-            <span className="text-[10px] font-black tracking-[0.2em] uppercase text-slate-500 group-hover:text-indigo-400 transition-colors">
-              {stock.symbol}
-            </span>
-
-            <span className="text-xs font-bold tabular-nums text-white">
-              ₹
-              {stock.price.toLocaleString("en-IN", {
-                minimumFractionDigits: 2,
-              })}
-            </span>
-
-            <span
-              className={`flex items-center gap-1 text-[10px] font-black px-1.5 py-0.5 rounded ${
-                stock.changePercent >= 0
-                  ? "text-emerald-400 bg-emerald-400/10"
-                  : "text-rose-400 bg-rose-400/10"
-              }`}
-            >
-              {stock.changePercent >= 0 ? (
-                <TrendingUp size={12} />
-              ) : (
-                <TrendingDown size={12} />
-              )}
-              {Math.abs(stock.changePercent).toFixed(2)}%
-            </span>
-          </Link>
-        ))}
+    <div className="kt-root">
+      <div className="kt-track">
+        {displayItems.map((stock, idx) => {
+          const up = stock.changePercent >= 0;
+          return (
+            <Link key={`${stock.symbol}-${idx}`} to={`/stock/${stock.symbol}`} className="kt-item">
+              <span className="kt-sym">{stock.symbol}</span>
+              <span className="kt-price">
+                ₹{stock.price.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+              </span>
+              <span className={`kt-chg ${up ? "kt-up" : "kt-dn"}`}>
+                {up ? <TrendingUp size={9} /> : <TrendingDown size={9} />}
+                {Math.abs(stock.changePercent).toFixed(2)}%
+              </span>
+              <span className="kt-sep">·</span>
+            </Link>
+          );
+        })}
       </div>
-
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        @keyframes kineticScroll {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-33.3333%); }
-        }
-        .animate-kinetic-scroll {
-          display: flex;
-          width: fit-content;
-          animation: kineticScroll 60s linear infinite;
-        }
-        .animate-kinetic-scroll:hover {
-          animation-play-state: paused;
-        }
-      `,
-        }}
-      />
+      <style>{styles}</style>
     </div>
   );
 };
+
+const styles = `
+.kt-root {
+  width: 100%;
+  height: 36px;
+  background: #0a0a0f;
+  border-bottom: 1px solid rgba(99,102,241,0.15);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  position: relative;
+  z-index: 100;
+}
+.kt-root::before, .kt-root::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 80px;
+  z-index: 2;
+  pointer-events: none;
+}
+.kt-root::before { left: 0; background: linear-gradient(to right, #0a0a0f, transparent); }
+.kt-root::after  { right: 0; background: linear-gradient(to left, #0a0a0f, transparent); }
+.kt-loader { margin: auto; color: #334155; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.kt-track {
+  display: flex;
+  width: fit-content;
+  animation: kscroll 55s linear infinite;
+}
+.kt-track:hover { animation-play-state: paused; }
+@keyframes kscroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-33.3333%); }
+}
+.kt-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px;
+  text-decoration: none;
+  transition: background 0.15s;
+  cursor: pointer;
+  border-right: 1px solid rgba(255,255,255,0.04);
+}
+.kt-item:hover { background: rgba(99,102,241,0.08); }
+.kt-sym {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #475569;
+  text-transform: uppercase;
+  transition: color 0.15s;
+}
+.kt-item:hover .kt-sym { color: #818cf8; }
+.kt-price {
+  font-size: 11px;
+  font-weight: 700;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+.kt-chg {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.kt-up { color: #34d399; background: rgba(52,211,153,0.1); }
+.kt-dn { color: #f87171; background: rgba(248,113,113,0.1); }
+.kt-sep { color: rgba(255,255,255,0.06); font-size: 14px; margin-left: 4px; }
+`;
 
 export default KineticTape;
