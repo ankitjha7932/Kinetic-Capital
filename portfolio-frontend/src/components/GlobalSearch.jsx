@@ -46,7 +46,8 @@ export default function GlobalSearch() {
   }, [query]);
 
   return (
-    <div className="relative w-full max-w-md hidden md:block" ref={searchRef}>
+    // REMOVED "hidden md:block" so it shows on all devices
+    <div className="relative w-full max-w-md" ref={searchRef}>
       <div className="relative group">
         <Search
           className="absolute left-4 top-3 text-slate-400 group-focus-within:text-indigo-500 transition-colors"
