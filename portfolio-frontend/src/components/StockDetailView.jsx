@@ -191,63 +191,63 @@ export default function StockDetailView() {
       {isAnalysisModalOpen && analysis && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-md" onClick={() => setIsAnalysisModalOpen(false)} />
-          <div className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 animate-in fade-in zoom-in duration-300">
-            <div className={`h-2 w-full ${sentiment.bg}`} />
-            <div className="p-6 sm:p-8">
-              <div className="flex justify-between items-start mb-6">
+          <div className="relative bg-white w-full max-w-lg max-h-[90vh] overflow-y-auto no-scrollbar rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-300">
+            <div className={`h-2 w-full shrink-0 ${sentiment.bg}`} />
+            <div className="p-4 sm:p-6 md:p-8">
+              <div className="flex justify-between items-start mb-4 sm:mb-6">
                 <div>
-                  <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5">Intelligence Core</p>
-                  <h2 className={`text-xl sm:text-2xl font-extrabold tracking-tight leading-tight ${sentiment.text}`}>
+                  <p className="text-[9px] sm:text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 sm:mb-1.5">Intelligence Core</p>
+                  <h2 className={`text-lg sm:text-xl md:text-2xl font-extrabold tracking-tight leading-tight ${sentiment.text}`}>
                     {analysis.sentiment || "Status Unavailable"}
                   </h2>
                 </div>
-                <button onClick={() => setIsAnalysisModalOpen(false)} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
-                  <X size={20} />
+                <button onClick={() => setIsAnalysisModalOpen(false)} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 transition-colors shrink-0">
+                  <X size={18} className="sm:w-5 sm:h-5" />
                 </button>
               </div>
 
               {analysis.sentiment === "Busy" ? (
-                <div className="p-10 text-center">
+                <div className="p-8 sm:p-10 text-center">
                   <Loader2 className="animate-spin text-indigo-600 mx-auto mb-4" size={32} />
                   <p className="font-bold text-slate-600">{analysis.message}</p>
                 </div>
               ) : (
                 <>
-                  <div className="mb-8 bg-slate-50/50 p-5 sm:p-6 rounded-2xl border border-slate-100 shadow-inner">
-                    <div className="flex justify-between items-end mb-3">
-                      <span className="text-sm font-black text-slate-500 uppercase tracking-widest">Confidence Index</span>
-                      <span className={`text-3xl sm:text-4xl font-extrabold ${sentiment.text}`}>{analysis.score}%</span>
+                  <div className="mb-4 sm:mb-6 bg-slate-50/50 p-4 sm:p-6 rounded-xl sm:rounded-2xl border border-slate-100 shadow-inner">
+                    <div className="flex justify-between items-end mb-2 sm:mb-3">
+                      <span className="text-[9px] sm:text-sm font-black text-slate-500 uppercase tracking-widest">Confidence Index</span>
+                      <span className={`text-2xl sm:text-3xl md:text-4xl font-extrabold ${sentiment.text}`}>{analysis.score}%</span>
                     </div>
-                    <div className="h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200/50 shadow-sm">
+                    <div className="h-2 sm:h-3 w-full bg-white rounded-full overflow-hidden border border-slate-200/50 shadow-sm">
                       <div className={`h-full transition-all duration-1000 ${sentiment.bg}`} style={{ width: `${analysis.score}%` }} />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-6 sm:mb-8">
                     {Object.entries(analysis.performanceMatrix || {}).map(([key, val]) => {
                       if (key === "Handover" || key === "Absorption") return null;
                       const reasons = analysis.breakdown?.filter((b) => b.pillar.toLowerCase().startsWith(key.toLowerCase().substring(0, 4)));
                       const isActive = activeInfoKey === key;
                       return (
-                        <div key={key} className="group relative bg-white p-4 sm:p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all hover:border-indigo-200">
-                          <div className="flex justify-between items-start mb-1.5">
-                            <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">{key}</p>
+                        <div key={key} className="group relative bg-white p-3 sm:p-4 md:p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all hover:border-indigo-200">
+                          <div className="flex justify-between items-start mb-1 sm:mb-1.5">
+                            <p className="text-[9px] sm:text-[10px] md:text-[11px] font-black text-slate-400 uppercase tracking-wider truncate mr-1">{key}</p>
                             <button onClick={(e) => { e.stopPropagation(); setActiveInfoKey(isActive ? null : key); }}
-                              className={`p-1.5 rounded-full transition-all ${isActive ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"}`}>
-                              <Info size={16} strokeWidth={2.5} />
+                              className={`p-1 sm:p-1.5 rounded-full transition-all shrink-0 ${isActive ? "bg-indigo-600 text-white" : "bg-indigo-50 text-indigo-600 hover:bg-indigo-100"}`}>
+                              <Info size={14} className="w-3 h-3 sm:w-4 sm:h-4" strokeWidth={2.5} />
                             </button>
                           </div>
-                          <p className="text-base sm:text-lg font-black text-slate-800 tracking-tight">{val}</p>
+                          <p className="text-xs sm:text-base md:text-lg font-black text-slate-800 tracking-tight leading-tight">{val}</p>
                           {isActive && (
-                            <div className="absolute inset-0 bg-white/98 backdrop-blur-sm p-5 rounded-xl z-10 flex flex-col justify-center animate-in fade-in zoom-in duration-200 shadow-2xl border-2 border-indigo-500/10">
-                              <div className="flex justify-between items-center mb-2">
-                                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Analysis Insight</span>
-                                <button onClick={() => setActiveInfoKey(null)} className="p-1 hover:bg-slate-100 rounded-full"><X size={14} className="text-slate-400" /></button>
+                            <div className="absolute inset-0 bg-white/98 backdrop-blur-sm p-3 sm:p-5 rounded-xl z-10 flex flex-col justify-center animate-in fade-in zoom-in duration-200 shadow-2xl border-2 border-indigo-500/10">
+                              <div className="flex justify-between items-center mb-1.5 sm:mb-2">
+                                <span className="text-[9px] sm:text-[10px] font-black text-indigo-600 uppercase tracking-widest truncate mr-1">Insight</span>
+                                <button onClick={() => setActiveInfoKey(null)} className="p-1 hover:bg-slate-100 rounded-full shrink-0"><X size={12} className="sm:w-[14px] sm:h-[14px] text-slate-400" /></button>
                               </div>
                               <div className="overflow-y-auto max-h-[100px] no-scrollbar">
                                 {reasons?.length > 0 ? reasons.map((r, i) => (
-                                  <p key={i} className="text-xs leading-relaxed font-bold text-slate-700 mb-1.5 last:mb-0 bg-slate-50 p-1.5 rounded-md">• {r.explanation}</p>
-                                )) : <p className="text-xs font-bold text-slate-400 italic">No specific data points available.</p>}
+                                  <p key={i} className="text-[9px] sm:text-xs leading-relaxed font-bold text-slate-700 mb-1 sm:mb-1.5 last:mb-0 bg-slate-50 p-1 sm:p-1.5 rounded-md">• {r.explanation}</p>
+                                )) : <p className="text-[9px] sm:text-xs font-bold text-slate-400 italic">No specific data points available.</p>}
                               </div>
                             </div>
                           )}
@@ -258,7 +258,7 @@ export default function StockDetailView() {
                 </>
               )}
               <button onClick={() => setIsAnalysisModalOpen(false)}
-                className={`w-full py-4 text-white rounded-xl font-black text-sm uppercase shadow-xl ${sentiment.bg} hover:brightness-110 transition-all hover:scale-[1.02] active:scale-95`}>
+                className={`w-full py-3 sm:py-4 text-white rounded-xl font-black text-xs sm:text-sm uppercase shadow-xl ${sentiment.bg} hover:brightness-110 transition-all hover:scale-[1.02] active:scale-95 mt-2`}>
                 Return to Dashboard
               </button>
             </div>
