@@ -2,61 +2,67 @@ import React, { useState } from "react";
 import { TrendingUp, ChevronRight, ChevronDown } from "lucide-react";
 
 const INDICES = [
-  "NIFTY 100",
-  "NIFTY 500",
-  "MIDCAP 100",
-  "SMALLCAP 100",
-  "NIFTY TOTAL MARKET",
+  "NIFTY 100", "NIFTY 500", "MIDCAP 100", "SMALLCAP 100", "NIFTY TOTAL MARKET",
 ];
-
-// Updated to 6 for the 3x2 symmetrical layout
 const PREVIEW_COUNT = 6;
+const getLogo = (sym) =>
+  `https://assets-netstorage.groww.in/stock-assets/logos2/${sym.replace(".NS","").toUpperCase()}.webp`;
 
-const getGrowwLogo = (symbol) =>
-  `https://assets-netstorage.groww.in/stock-assets/logos2/${symbol
-    .replace(".NS", "")
-    .toUpperCase()}.webp`;
+/* ── FIXED SPARKLINE ─────────────────────────────────────────────────────── */
+/* Key fixes:
+   1. viewBox is calculated from ACTUAL data range, not hard-coded 0–100
+   2. Padding added inside SVG so line never clips at edges
+   3. Dashed baseline is prominent (thick + visible colour)
+   4. preserveAspectRatio="none" fills the allocated box cleanly            */
+function Sparkline({ data, positive, width = 64, height = 28 }) {
+  if (!data || data.length < 2) {
+    return <div style={{ width, height, borderRadius: 4, background: "#f1f5f9" }} />;
+  }
 
-function Sparkline({ data, positive }) {
-  if (!data || data.length < 2) return null;
+  const PAD   = 2;                            // inner padding so stroke isn't clipped
+  const W     = width  - PAD * 2;
+  const H     = height - PAD * 2;
 
-  const min = Math.min(...data);
-  const max = Math.max(...data);
+  const min   = Math.min(...data);
+  const max   = Math.max(...data);
   const range = max - min || 1;
 
-  const w = 64;
-  const h = 28;
+  // baseline = 7-day average
+  const last7  = data.slice(-7);
+  const avg    = last7.reduce((a, b) => a + b, 0) / last7.length;
+  const baseY  = PAD + H - ((avg - min) / range) * H;
 
-  const last7 = data.slice(-7);
-  const avg = last7.reduce((a, b) => a + b, 0) / last7.length;
-  const avgY = h - ((avg - min) / range) * h;
-
-  const pts = data
+  const points = data
     .map((v, i) => {
-      const x = (i / (data.length - 1)) * w;
-      const y = h - ((v - min) / range) * h;
-      return `${x},${y}`;
+      const x = PAD + (i / (data.length - 1)) * W;
+      const y = PAD + H - ((v - min) / range) * H;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
 
-  const color = positive ? "#10b981" : "#f43f5e";
+  const lineColor = positive ? "#10b981" : "#f43f5e";
 
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none">
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      fill="none"
+      style={{ display: "block", flexShrink: 0, overflow: "visible" }}
+    >
+      {/* Dashed baseline — thicker + clearly visible */}
       <line
-        x1="0"
-        x2={w}
-        y1={avgY}
-        y2={avgY}
-        stroke="#94a3b8"
-        strokeWidth="1"
-        strokeDasharray="3 4"
-        opacity="0.3" // More subtle baseline
+        x1={PAD}      y1={baseY}
+        x2={width - PAD} y2={baseY}
+        stroke="#cbd5e1"
+        strokeWidth="1.2"
+        strokeDasharray="4 3"
       />
+      {/* Price line */}
       <polyline
-        points={pts}
-        stroke={color}
-        strokeWidth="1.2" // Finner trend line
+        points={points}
+        stroke={lineColor}
+        strokeWidth="1.5"
         fill="none"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -65,97 +71,62 @@ function Sparkline({ data, positive }) {
   );
 }
 
-function LogoAvatar({ symbol }) {
-  const [failed, setFailed] = useState(false);
-  const ticker = symbol.replace(".NS", "").toUpperCase();
-  if (failed) {
-    return (
-      <div style={{
-        width: 32, height: 32, borderRadius: 8,
-        background: "#4f46e5", color: "#fff",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 10, fontWeight: 700, flexShrink: 0,
-        letterSpacing: "-0.5px",
-      }}>
-        {ticker.slice(0, 3)}
-      </div>
-    );
-  }
+/* ── LOGO ────────────────────────────────────────────────────────────────── */
+function Logo({ symbol, size = 32 }) {
+  const [err, setErr] = useState(false);
+  const t = symbol.replace(".NS","").toUpperCase();
+  if (err) return (
+    <div style={{
+      width: size, height: size, borderRadius: 8,
+      background: "#4f46e5", color: "#fff",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontSize: 9, fontWeight: 700, flexShrink: 0,
+    }}>
+      {t.slice(0, 3)}
+    </div>
+  );
   return (
     <div style={{
-      width: 32, height: 32, borderRadius: 8,
+      width: size, height: size, borderRadius: 8,
       background: "#f8f8f8", border: "0.5px solid #e5e7eb",
       display: "flex", alignItems: "center", justifyContent: "center",
       overflow: "hidden", flexShrink: 0,
     }}>
       <img
-        src={getGrowwLogo(symbol)}
-        alt={ticker}
-        style={{ width: 24, height: 24, objectFit: "contain" }}
-        onError={() => setFailed(true)}
+        src={getLogo(symbol)} alt={t}
+        style={{ width: size * 0.75, height: size * 0.75, objectFit: "contain" }}
+        onError={() => setErr(true)}
       />
     </div>
   );
 }
 
-function ReturnBadge({ value, period }) {
-  const positive = value >= 0;
-  return (
-    <div style={{
-      display: "inline-flex", alignItems: "center", gap: 3,
-      background: positive ? "#ecfdf5" : "#fff1f2",
-      color: positive ? "#059669" : "#e11d48",
-      borderRadius: 6, padding: "2px 6px", fontSize: 10, fontWeight: 700,
-    }}>
-      <TrendingUp size={9} style={{ transform: positive ? "none" : "scaleY(-1)" }} />
-      {positive ? "+" : ""}{value.toFixed(2)}% {period}
-    </div>
-  );
-}
-
-function StockRow({ stock, returnField, period, onSelect, rank }) {
-  const val = stock[returnField];
+/* ── LIST ROW ────────────────────────────────────────────────────────────── */
+function StockRow({ stock, returnField, onSelect, rank }) {
+  const val      = stock[returnField];
   const positive = val >= 0;
+  const color    = positive ? "#059669" : "#e11d48";
+
   return (
     <div
       onClick={() => onSelect(stock.symbol)}
-      style={{
-        display: "flex", alignItems: "center", gap: 12,
-        padding: "10px 0",
-        borderBottom: "0.5px solid #f1f5f9",
-        cursor: "pointer",
-        transition: "all 0.1s ease-in-out",
-        transform: "none",
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.background = "#f9fafb";
-        e.currentTarget.style.transform = "translateX(2px)";
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.background = "transparent";
-        e.currentTarget.style.transform = "none";
-      }}
+      className="rl-row"
     >
-      <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", minWidth: 16, textAlign: "right" }}>
-        {rank}
-      </span>
-      <LogoAvatar symbol={stock.symbol} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {stock.symbol}
-        </div>
-        <div style={{ fontSize: 10, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {stock.companyName}
-        </div>
+      <span className="rl-rank">{rank}</span>
+      <Logo symbol={stock.symbol} size={30} />
+      <div className="rl-name">
+        <div className="rl-sym">{stock.symbol}</div>
+        <div className="rl-company">{stock.companyName}</div>
       </div>
-      <div style={{ marginLeft: "auto" }}>
-        <Sparkline data={stock.sparkline} positive={positive} />
+      {/* Hide sparkline on very small screens */}
+      <div className="rl-spark">
+        <Sparkline data={stock.sparkline} positive={positive} width={60} height={26} />
       </div>
-      <div style={{ textAlign: "right", minWidth: 80 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+      <div className="rl-price">
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>
           ₹{stock.price.toLocaleString("en-IN")}
         </div>
-        <div style={{ fontSize: 10, fontWeight: 700, color: positive ? "#059669" : "#e11d48" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color }}>
           {positive ? "+" : ""}{val.toFixed(2)}%
         </div>
       </div>
@@ -163,41 +134,190 @@ function StockRow({ stock, returnField, period, onSelect, rank }) {
   );
 }
 
+/* ── MAIN COMPONENT ──────────────────────────────────────────────────────── */
 export default function ReturnLeaders({ data, selectedIndex, onIndexChange, onSelectStock }) {
-  const [period, setPeriod] = useState("1W");
+  const [period, setPeriod]   = useState("1W");
   const [expanded, setExpanded] = useState(false);
-
   if (!data) return null;
 
-  const list = period === "1W" ? (data.topReturnsWeekly || []) : (data.topReturnsMonthly || []);
+  const list  = period === "1W" ? (data.topReturnsWeekly || []) : (data.topReturnsMonthly || []);
   const sorted = [...list].sort((a, b) =>
     period === "1W" ? b.return1W - a.return1W : b.return1M - a.return1M
   );
-  const returnField = period === "1W" ? "return1W" : "return1M";
-  const displayed = expanded ? sorted : sorted.slice(0, PREVIEW_COUNT);
+  const field   = period === "1W" ? "return1W" : "return1M";
+  const shown   = expanded ? sorted : sorted.slice(0, PREVIEW_COUNT);
 
   return (
-    <div style={{ width: "100%" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.5px" }}>
-            Return leaders
-          </div>
-          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-            Top performers by period return
-          </div>
-        </div>
+    <>
+      <style>{`
+        /* ─── HEADER ──────────────────────────────── */
+        .rl-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          margin-bottom: 14px;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .rl-title { font-size: 15px; font-weight: 700; color: #0f172a; letter-spacing: -0.4px; }
+        .rl-sub   { font-size: 11px; color: #94a3b8; margin-top: 2px; }
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", background: "#f1f5f9", borderRadius: 8, padding: 3, gap: 2 }}>
-            {["1W", "1M"].map(p => (
+        .rl-controls {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .rl-toggle {
+          display: flex;
+          background: #f1f5f9;
+          border-radius: 8px;
+          padding: 3px;
+          gap: 2px;
+        }
+        .rl-toggle-btn {
+          padding: 3px 12px;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 700;
+          border: none;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .rl-select {
+          font-size: 11px;
+          font-weight: 700;
+          color: #64748b;
+          background: #f1f5f9;
+          border: none;
+          border-radius: 8px;
+          padding: 5px 8px;
+          cursor: pointer;
+          outline: none;
+          appearance: none;
+          max-width: 140px;
+        }
+
+        /* ─── CARD GRID ───────────────────────────── */
+        /* Default: 3 columns */
+        .rl-cards {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 10px;
+          margin-bottom: 16px;
+        }
+        /* ≤ 480px: 2 columns */
+        @media (max-width: 480px) {
+          .rl-cards { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        }
+
+        .rl-card {
+          background: #fff;
+          border: 0.5px solid #e2e8f0;
+          border-radius: 14px;
+          padding: 12px 10px;
+          cursor: pointer;
+          transition: all 0.18s ease;
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+          box-sizing: border-box;
+          min-width: 0;
+        }
+        .rl-card:hover {
+          background: #f0f4ff;
+          border-color: #c7d2fe;
+          box-shadow: 0 6px 16px rgba(79,70,229,0.1);
+          transform: translateY(-3px);
+        }
+        .rl-card-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .rl-badge {
+          font-size: 9px; font-weight: 800;
+          color: #c7d2fe; background: #eef2ff;
+          border-radius: 5px; padding: 1px 6px;
+        }
+        .rl-card-sym {
+          font-size: 10px; font-weight: 800; color: #0f172a; margin-top: 2px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .rl-card-name {
+          font-size: 9px; color: #94a3b8; line-height: 1.3;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .rl-card-spark {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 28px;
+        }
+        .rl-card-price {
+          font-size: 12px; font-weight: 800; color: #0f172a;
+          font-variant-numeric: tabular-nums;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .rl-card-ret {
+          font-size: 10px; font-weight: 700; margin-top: 1px;
+        }
+
+        /* ─── LIST ROWS ───────────────────────────── */
+        .rl-list {
+          background: #fff;
+          border: 0.5px solid #e2e8f0;
+          border-radius: 14px;
+          padding: 2px 12px;
+          box-sizing: border-box;
+        }
+        .rl-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 9px 0;
+          border-bottom: 0.5px solid #f1f5f9;
+          cursor: pointer;
+          transition: all 0.12s;
+        }
+        .rl-row:last-child { border-bottom: none; }
+        .rl-row:hover { transform: translateX(2px); background: #f9fafb; }
+
+        .rl-rank  { font-size: 10px; font-weight: 700; color: #94a3b8; min-width: 14px; text-align: right; flex-shrink: 0; }
+        .rl-name  { flex: 1; min-width: 0; }
+        .rl-sym   { font-size: 12px; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .rl-company { font-size: 10px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .rl-spark { flex-shrink: 0; }
+        .rl-price { text-align: right; min-width: 78px; flex-shrink: 0; }
+
+        /* Hide sparkline column on very small screens */
+        @media (max-width: 380px) {
+          .rl-spark { display: none; }
+        }
+
+        .rl-more-btn {
+          width: 100%; padding: 10px 0; background: none; border: none;
+          border-top: 0.5px solid #f1f5f9; cursor: pointer;
+          display: flex; align-items: center; justify-content: center; gap: 5px;
+          font-size: 12px; font-weight: 700; color: #4f46e5;
+        }
+        .rl-more-btn:hover { color: #3730a3; }
+      `}</style>
+
+      {/* HEADER */}
+      <div className="rl-header">
+        <div>
+          <div className="rl-title">Return leaders</div>
+          <div className="rl-sub">Top performers by period return</div>
+        </div>
+        <div className="rl-controls">
+          <div className="rl-toggle">
+            {["1W","1M"].map(p => (
               <button
                 key={p}
+                className="rl-toggle-btn"
                 onClick={() => { setPeriod(p); setExpanded(false); }}
                 style={{
-                  padding: "4px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700,
-                  border: "none", cursor: "pointer", transition: "all 0.15s",
                   background: period === p ? "#fff" : "transparent",
                   color: period === p ? "#4f46e5" : "#64748b",
                   boxShadow: period === p ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
@@ -205,92 +325,42 @@ export default function ReturnLeaders({ data, selectedIndex, onIndexChange, onSe
               >{p}</button>
             ))}
           </div>
-
           <select
+            className="rl-select"
             value={selectedIndex}
             onChange={e => { onIndexChange(e.target.value); setExpanded(false); }}
-            style={{
-              fontSize: 11, fontWeight: 700, color: "#64748b",
-              background: "#f1f5f9", border: "none", borderRadius: 8,
-              padding: "6px 8px", cursor: "pointer", outline: "none",
-              appearance: "none", paddingRight: 20,
-            }}
           >
-            {INDICES.map(idx => (
-              <option key={idx} value={idx}>{idx}</option>
-            ))}
+            {INDICES.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
         </div>
       </div>
 
-      {/* Symmetrical 3x2 Grid */}
-      <div style={{ 
-        display: "grid", 
-        gridTemplateColumns: "repeat(3, 1fr)", // Forces exactly 3 columns
-        gap: 12, 
-        marginBottom: 20 
-      }}>
+      {/* TOP CARDS GRID — always 3 cols (2 on mobile) */}
+      <div className="rl-cards">
         {sorted.slice(0, PREVIEW_COUNT).map((stock, i) => {
-          const val = stock[returnField];
-          const positive = val >= 0;
+          const val = stock[field];
+          const pos = val >= 0;
           return (
             <div
               key={stock.symbol}
+              className="rl-card"
               onClick={() => onSelectStock(stock.symbol)}
-              style={{
-                background: "#fff", border: "0.5px solid #e2e8f0",
-                borderRadius: 16, padding: "14px",
-                cursor: "pointer", transition: "all 0.2s ease-in-out",
-                display: "flex", flexDirection: "column", gap: 8,
-                transform: "none",
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = "#f0f4ff"; // Light blue background
-                e.currentTarget.style.borderColor = "#c7d2fe";
-                e.currentTarget.style.boxShadow = "0 8px 16px rgba(0,0,0,0.08)";
-                e.currentTarget.style.transform = "scale(1.02) translateY(-4px)"; // Scale and Lift
-                const badge = e.currentTarget.querySelector('.rank-badge');
-                if(badge) badge.style.transform = "scale(1.1) rotate(-5deg)";
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = "#fff";
-                e.currentTarget.style.borderColor = "#e2e8f0";
-                e.currentTarget.style.boxShadow = "none";
-                e.currentTarget.style.transform = "none";
-                const badge = e.currentTarget.querySelector('.rank-badge');
-                if(badge) badge.style.transform = "none";
-              }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <LogoAvatar symbol={stock.symbol} />
-                <span 
-                  className="rank-badge"
-                  style={{ 
-                    fontSize: 10, fontWeight: 800, color: "#c7d2fe", 
-                    background: "#eef2ff", borderRadius: 6, padding: "2px 6px",
-                    transition: "transform 0.2s ease-out" 
-                  }}
-                >
-                  #{i + 1}
-                </span>
+              <div className="rl-card-top">
+                <Logo symbol={stock.symbol} size={30} />
+                <span className="rl-badge">#{i + 1}</span>
               </div>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 800, color: "#0f172a" }}>
-                  {stock.symbol}
-                </div>
-                <div style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.3, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {stock.companyName}
-                </div>
+                <div className="rl-card-sym">{stock.symbol}</div>
+                <div className="rl-card-name">{stock.companyName}</div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'center'}}>
-                <Sparkline data={stock.sparkline} positive={positive} />
+              <div className="rl-card-spark">
+                <Sparkline data={stock.sparkline} positive={pos} width={58} height={26} />
               </div>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>
-                  ₹{stock.price.toLocaleString("en-IN")}
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: positive ? "#059669" : "#e11d48", marginTop: 2 }}>
-                  {positive ? "+" : ""}{val.toFixed(2)}%
+                <div className="rl-card-price">₹{stock.price.toLocaleString("en-IN")}</div>
+                <div className="rl-card-ret" style={{ color: pos ? "#059669" : "#e11d48" }}>
+                  {pos ? "+" : ""}{val.toFixed(2)}%
                 </div>
               </div>
             </div>
@@ -298,38 +368,26 @@ export default function ReturnLeaders({ data, selectedIndex, onIndexChange, onSe
         })}
       </div>
 
-      {/* List section */}
-      <div style={{ background: "#fff", border: "0.5px solid #e2e8f0", borderRadius: 16, padding: "4px 16px" }}>
-        {displayed.map((stock, i) => (
+      {/* LIST */}
+      <div className="rl-list">
+        {shown.map((stock, i) => (
           <StockRow
             key={stock.symbol}
             stock={stock}
-            returnField={returnField}
-            period={period}
+            returnField={field}
             onSelect={onSelectStock}
             rank={i + 1}
           />
         ))}
-
         {sorted.length > PREVIEW_COUNT && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            style={{
-              width: "100%", padding: "12px 0", background: "none",
-              border: "none", borderTop: "0.5px solid #f1f5f9",
-              cursor: "pointer", display: "flex", alignItems: "center",
-              justifyContent: "center", gap: 5,
-              fontSize: 12, fontWeight: 700, color: "#4f46e5",
-            }}
-          >
-            {expanded ? (
-              <><ChevronDown size={14} /> Show less</>
-            ) : (
-              <><ChevronRight size={14} /> See all {sorted.length} stocks</>
-            )}
+          <button className="rl-more-btn" onClick={() => setExpanded(!expanded)}>
+            {expanded
+              ? <><ChevronDown size={13}/> Show less</>
+              : <><ChevronRight size={13}/> See all {sorted.length} stocks</>
+            }
           </button>
         )}
       </div>
-    </div>
+    </>
   );
 }

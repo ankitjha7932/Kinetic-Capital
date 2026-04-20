@@ -40,6 +40,49 @@ const STRATEGIC_CHIPS = [
   },
 ];
 
+// 1. NEW COMPONENT: Handles the GPT-style streaming effect
+const TypewriterMarkdown = ({ text, onComplete }) => {
+  const [displayedText, setDisplayedText] = useState("");
+
+  useEffect(() => {
+    let i = 0;
+    const interval = setInterval(() => {
+      // Reveal 3 characters at a time for a smooth, fast typing feel
+      setDisplayedText(text.slice(0, i));
+      i += 3;
+      
+      if (i >= text.length + 3) {
+        clearInterval(interval);
+        onComplete(); // Tell the parent we are done typing
+      }
+    }, 15); // Adjust speed here (lower is faster)
+
+    return () => clearInterval(interval);
+  }, [text, onComplete]);
+
+  return (
+    <ReactMarkdown
+      components={{
+        h3: ({ node, ...props }) => (
+          <h3
+            className="text-indigo-400 font-black text-lg mb-4 uppercase tracking-tight border-b border-white/5 pb-2"
+            {...props}
+          />
+        ),
+        strong: ({ node, ...props }) => (
+          <strong
+            className="text-white font-black bg-white/5 px-1 rounded"
+            {...props}
+          />
+        ),
+      }}
+    >
+      {/* Append the blinking cursor while typing */}
+      {displayedText + (displayedText.length < text.length ? " ▍" : "")}
+    </ReactMarkdown>
+  );
+};
+
 export default function StrategicTerminal() {
   const { symbol } = useParams();
   const navigate = useNavigate();
@@ -47,9 +90,9 @@ export default function StrategicTerminal() {
   const [input, setInput] = useState("");
   const [loadingStatus, setLoadingStatus] = useState("");
   const [followUps, setFollowUps] = useState([]);
+  const [isTyping, setIsTyping] = useState(false); // 2. NEW STATE: Tracks typing status
   const messagesEndRef = useRef(null);
 
-  // 1. YOUR SPECIFIC SAMPLE QUESTIONS
   const sampleQuestions = [
     {
       text: "Give me a complete analysis with strategy and risk",
@@ -69,19 +112,21 @@ export default function StrategicTerminal() {
     },
   ];
 
+  // Auto-scroll logic to keep the chat pinned to the bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loadingStatus, followUps]);
+  }, [messages, loadingStatus, followUps, isTyping]);
 
   const handleSendMessage = async (msgText) => {
     const text = msgText || input;
     if (!text.trim()) return;
 
     setInput("");
-    setFollowUps([]); // Clear suggestions when asking a new question
+    setFollowUps([]);
     setMessages((prev) => [...prev, { role: "user", text }]);
 
     try {
+      // 3. UPDATED: Set realistic thinking phases
       setLoadingStatus("Syncing Global Feeds...");
       await new Promise((r) => setTimeout(r, 600));
       setLoadingStatus("Running Quant Simulations...");
@@ -90,36 +135,43 @@ export default function StrategicTerminal() {
 
       const res = await api.post("/Chat/ask", { message: text, symbol });
 
-      // Capture message and follow-ups from backend
-      setMessages((prev) => [...prev, { role: "bot", text: res.data.message }]);
+      setLoadingStatus(""); // Clear loading before typing starts
+      setIsTyping(true); // Start the typing effect
+
+      // Pass flag to identify which message needs the typewriter
+      setMessages((prev) => [
+        ...prev, 
+        { role: "bot", text: res.data.message, needsTyping: true }
+      ]);
       setFollowUps(res.data.followUps || []);
     } catch (err) {
+      setLoadingStatus("");
+      setIsTyping(true);
       setMessages((prev) => [
         ...prev,
         {
           role: "bot",
           text: "### ⚠️ Link Severed\nStrategic core unreachable. Re-establishing secure tunnel...",
+          needsTyping: true
         },
       ]);
-    } finally {
-      setLoadingStatus("");
     }
   };
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-200 font-sans overflow-hidden">
-      {/* LEFT SIDEBAR */}
-      <div className="w-80 border-r border-white/5 bg-slate-900/20 backdrop-blur-xl flex flex-col p-6 space-y-8 relative overflow-hidden">
+      {/* LEFT SIDEBAR - Remains Unchanged */}
+      <div className="w-80 border-r border-white/5 bg-slate-900/20 backdrop-blur-xl flex flex-col p-6 space-y-8 relative overflow-hidden hidden md:flex">
         <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-50 bg-[length:100%_2px,3px_100%]" />
 
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-slate-500 hover:text-indigo-400 transition-all text-[10px] font-black uppercase tracking-[0.2em]"
+          className="flex items-center gap-2 text-slate-500 hover:text-indigo-400 transition-all text-[10px] font-black uppercase tracking-[0.2em] z-10"
         >
           <ArrowLeft size={14} /> Close Secure Session
         </button>
 
-        <div className="pt-4 border-t border-white/5">
+        <div className="pt-4 border-t border-white/5 z-10">
           <p className="text-[10px] font-black text-indigo-500/80 uppercase tracking-[0.3em] mb-1">
             Target Identity
           </p>
@@ -134,7 +186,7 @@ export default function StrategicTerminal() {
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 z-10">
           <div className="bg-slate-800/20 rounded-2xl p-5 border border-white/5 space-y-4">
             <div className="flex items-center gap-2 mb-2">
               <Cpu size={14} className="text-slate-500" />
@@ -142,21 +194,9 @@ export default function StrategicTerminal() {
                 Logic Core
               </span>
             </div>
-            <ParamRow
-              label="Macro Risk"
-              value="High (War)"
-              color="text-rose-500"
-            />
-            <ParamRow
-              label="Alpha Signal"
-              value="Strong"
-              color="text-emerald-400"
-            />
-            <ParamRow
-              label="Volatility"
-              value="Elevated"
-              color="text-amber-400"
-            />
+            <ParamRow label="Macro Risk" value="High (War)" color="text-rose-500" />
+            <ParamRow label="Alpha Signal" value="Strong" color="text-emerald-400" />
+            <ParamRow label="Volatility" value="Elevated" color="text-amber-400" />
           </div>
           <div className="px-5 space-y-2 opacity-40">
             <div className="flex justify-between text-[9px] font-mono">
@@ -183,8 +223,7 @@ export default function StrategicTerminal() {
             </div>
             <div>
               <h2 className="text-sm font-black text-white uppercase tracking-[0.2em]">
-                Kinetic Command{" "}
-                <span className="text-indigo-500 ml-1">v4.0</span>
+                Kinetic Command <span className="text-indigo-500 ml-1">v4.0</span>
               </h2>
               <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
                 Encrypted Strategic Protocol Active
@@ -194,9 +233,10 @@ export default function StrategicTerminal() {
         </div>
 
         {/* Message Feed */}
-        <div className="flex-1 overflow-y-auto p-10 space-y-10 no-scrollbar z-10">
+        <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-10 no-scrollbar z-10">
           <div className="max-w-3xl mx-auto space-y-12">
-            {/* INITIAL SAMPLE QUESTIONS (Agent Start) */}
+            
+            {/* INITIAL SAMPLE QUESTIONS */}
             {messages.length === 0 && (
               <div className="space-y-8 animate-in fade-in duration-700">
                 <div className="text-center space-y-2">
@@ -227,14 +267,10 @@ export default function StrategicTerminal() {
               </div>
             )}
 
+            {/* MESSAGE MAP */}
             {messages.map((m, i) => (
-              <div
-                key={i}
-                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`relative group ${m.role === "user" ? "max-w-[80%]" : "w-full"}`}
-                >
+              <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`relative group ${m.role === "user" ? "max-w-[80%]" : "w-full"}`}>
                   {m.role === "user" ? (
                     <div className="bg-indigo-600 px-6 py-4 rounded-2xl rounded-tr-none text-white text-sm font-bold shadow-xl">
                       {m.text}
@@ -247,25 +283,35 @@ export default function StrategicTerminal() {
                           System Verdict
                         </span>
                       </div>
-                      <div className="bg-slate-900/40 border border-white/5 p-8 rounded-[2rem] text-slate-300 text-sm leading-relaxed font-mono shadow-inner backdrop-blur-sm">
-                        <ReactMarkdown
-                          components={{
-                            h3: ({ node, ...props }) => (
-                              <h3
-                                className="text-indigo-400 font-black text-lg mb-4 uppercase tracking-tight border-b border-white/5 pb-2"
-                                {...props}
-                              />
-                            ),
-                            strong: ({ node, ...props }) => (
-                              <strong
-                                className="text-white font-black bg-white/5 px-1 rounded"
-                                {...props}
-                              />
-                            ),
-                          }}
-                        >
-                          {m.text}
-                        </ReactMarkdown>
+                      <div className="bg-slate-900/40 border border-white/5 p-6 md:p-8 rounded-[2rem] text-slate-300 text-sm leading-relaxed font-mono shadow-inner backdrop-blur-sm">
+                        
+                        {/* 4. UPDATED: Render Typewriter if it's the newest bot message, otherwise static Markdown */}
+                        {m.needsTyping ? (
+                          <TypewriterMarkdown 
+                            text={m.text} 
+                            onComplete={() => {
+                              // Once typing is done, remove the flag so it stays static on re-renders
+                              setMessages(prev => prev.map((msg, idx) => 
+                                idx === i ? { ...msg, needsTyping: false } : msg
+                              ));
+                              setIsTyping(false); 
+                            }} 
+                          />
+                        ) : (
+                          <ReactMarkdown
+                            components={{
+                              h3: ({ node, ...props }) => (
+                                <h3 className="text-indigo-400 font-black text-lg mb-4 uppercase tracking-tight border-b border-white/5 pb-2" {...props} />
+                              ),
+                              strong: ({ node, ...props }) => (
+                                <strong className="text-white font-black bg-white/5 px-1 rounded" {...props} />
+                              ),
+                            }}
+                          >
+                            {m.text}
+                          </ReactMarkdown>
+                        )}
+                        
                       </div>
                     </div>
                   )}
@@ -273,8 +319,28 @@ export default function StrategicTerminal() {
               </div>
             ))}
 
-            {/* DYNAMIC FOLLOW-UPS FROM BACKEND */}
-            {!loadingStatus && followUps.length > 0 && (
+            {/* 5. UPDATED: Inline Loading Status as a Chat Bubble */}
+            {loadingStatus && (
+               <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+                 <div className="w-full space-y-4">
+                    <div className="flex items-center gap-2 text-indigo-400 opacity-60 animate-pulse">
+                      <Cpu size={14} />
+                      <span className="text-[10px] font-black uppercase tracking-[0.3em]">
+                        Processing Request
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 py-6 px-8 bg-slate-900/40 border border-white/5 rounded-[2rem] shadow-inner backdrop-blur-sm w-fit">
+                      <Loader2 size={18} className="animate-spin text-indigo-500" />
+                      <span className="text-xs font-bold text-indigo-400 uppercase tracking-[0.2em] animate-pulse">
+                        {loadingStatus}
+                      </span>
+                    </div>
+                 </div>
+               </div>
+            )}
+
+            {/* DYNAMIC FOLLOW-UPS FROM BACKEND - Hidden until typing is complete */}
+            {!loadingStatus && !isTyping && followUps.length > 0 && (
               <div className="flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="w-full mb-1 flex items-center gap-2 px-1">
                   <Sparkles size={12} className="text-indigo-400" />
@@ -295,27 +361,21 @@ export default function StrategicTerminal() {
               </div>
             )}
 
-            {loadingStatus && (
-              <div className="flex items-center gap-4 py-4 px-6 bg-indigo-500/5 rounded-2xl border border-indigo-500/20 w-fit animate-pulse">
-                <Loader2 size={16} className="animate-spin text-indigo-500" />
-                <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em]">
-                  {loadingStatus}
-                </span>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+            {/* Invisible div to snap scroll to */}
+            <div ref={messagesEndRef} className="h-4" />
           </div>
         </div>
 
         {/* Input & Static Suggestions */}
-        <div className="p-8 bg-slate-950/80 backdrop-blur-2xl border-t border-white/5">
+        <div className="p-4 md:p-8 bg-slate-950/80 backdrop-blur-2xl border-t border-white/5 shrink-0 z-10">
           <div className="max-w-3xl mx-auto">
-            <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar pb-2">
+            <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar pb-2">
               {STRATEGIC_CHIPS.map((s, i) => (
                 <button
                   key={i}
                   onClick={() => handleSendMessage(s.query)}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-900 border border-white/10 rounded-full whitespace-nowrap hover:bg-indigo-600 hover:border-indigo-500 transition-all group"
+                  disabled={loadingStatus || isTyping}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-900 border border-white/10 rounded-full whitespace-nowrap hover:bg-indigo-600 hover:border-indigo-500 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span className="text-slate-500 group-hover:text-white">
                     {s.icon}
@@ -337,12 +397,17 @@ export default function StrategicTerminal() {
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={`Analyze ${symbol} strategic position...`}
-                className="w-full bg-slate-900/60 border border-white/10 rounded-2xl py-6 pl-8 pr-20 text-md font-bold text-white shadow-2xl outline-none focus:border-indigo-500 transition-all placeholder:text-slate-700"
+                disabled={loadingStatus || isTyping}
+                placeholder={isTyping || loadingStatus ? "Awaiting transmission..." : `Analyze ${symbol} strategic position...`}
+                className="w-full bg-slate-900/60 border border-white/10 rounded-2xl py-5 md:py-6 pl-6 md:pl-8 pr-20 text-sm md:text-md font-bold text-white shadow-2xl outline-none focus:border-indigo-500 transition-all placeholder:text-slate-700 disabled:opacity-50"
               />
-              <button className="absolute right-3 top-1/2 -translate-y-1/2 w-12 h-12 bg-indigo-600 text-white rounded-xl shadow-lg hover:bg-indigo-500 transition-all flex items-center justify-center group">
+              <button 
+                type="submit"
+                disabled={!input.trim() || loadingStatus || isTyping}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 md:w-12 h-10 md:h-12 bg-indigo-600 text-white rounded-xl shadow-lg hover:bg-indigo-500 transition-all flex items-center justify-center group disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <Send
-                  size={20}
+                  size={18}
                   className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform"
                 />
               </button>
