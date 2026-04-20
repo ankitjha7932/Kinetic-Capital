@@ -4,15 +4,15 @@ import api from "../api/axios";
 import PositionsList from "../components/PositionsList";
 import MarketMoversGrid from "../components/MarketMoversGrid";
 import ReturnLeaders from "../components/ReturnLeaders";
-import { Activity, TrendingUp, Target, Loader2, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Activity, Target, ArrowUpRight, ArrowDownRight, Loader2 } from "lucide-react";
 
 const DEFAULT_INDEX = "NIFTY 100";
 
 export default function Dashboard({ userId }) {
-  const [data, setData] = useState({ summary: null, analysis: null });
+  const [data, setData]             = useState({ summary: null, analysis: null });
   const [marketData, setMarketData] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(DEFAULT_INDEX);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading]       = useState(true);
   const navigate = useNavigate();
 
   const fetchMarket = async (index) => {
@@ -46,187 +46,184 @@ export default function Dashboard({ userId }) {
     fetchMarket(index);
   };
 
-  if (loading)
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-        <Loader2 size={32} style={{ color: "#4f46e5", animation: "spin 1s linear infinite" }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-
-  const s = data.summary;
-  
-  // Calculate P&L Percentage
-  const pnlPct = s?.totalInvested > 0 
-    ? (s.totalPnl / s.totalInvested) * 100 
-    : 0;
-
-  return (
-    <div style={{
-      padding: "clamp(16px, 4vw, 32px)",
-      maxWidth: 1400,
-      margin: "0 auto",
-      backgroundColor: "#fcfcfd",
-      minHeight: "100vh"
-    }}>
-
-      {/* ── 1. STATS ROW ── */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-        gap: 16,
-        marginBottom: 32
-      }}>
-        <StatCard
-          label="Invested"
-          value={`₹${s?.totalInvested?.toLocaleString("en-IN") ?? "0"}`}
-          icon={<Target size={18} />}
-        />
-        <StatCard
-          label="Current value"
-          value={`₹${s?.currentValue?.toLocaleString("en-IN") ?? "0"}`}
-          icon={<Activity size={18} />}
-        />
-        <StatCard
-          label="Total P&L"
-          value={`₹${s?.totalPnl?.toLocaleString("en-IN") ?? "0"}`}
-          percentage={pnlPct}
-          icon={s?.totalPnl >= 0 ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
-          accent={s?.totalPnl >= 0 ? "green" : "red"}
-        />
-      </div>
-
-      {/* ── 2. MARKET SECTION ── */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))",
-        gap: 24,
-        marginBottom: 32
-      }}>
-        <SectionCard>
-          <ReturnLeaders
-            data={marketData}
-            selectedIndex={selectedIndex}
-            onIndexChange={handleIndexChange}
-            onSelectStock={(sym) => navigate(`/stock/${sym}`)}
-          />
-        </SectionCard>
-
-        <SectionCard>
-          <MarketMoversGrid
-            data={marketData}
-            onSelectStock={(sym) => navigate(`/stock/${sym}`)}
-          />
-        </SectionCard>
-      </div>
-
-      {/* ── 3. POSITIONS ── */}
-      <div style={{ background: "#fff", border: "1px solid #f1f5f9", borderRadius: 24, padding: "8px" }}>
-        <PositionsList
-          positions={data.analysis?.positions || []}
-          onRefresh={fetchPortfolio}
-          onSelectStock={(symbol) => navigate(`/stock/${symbol}`)}
-        />
+  if (loading) return (
+    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:"60vh" }}>
+      <div style={{ textAlign:"center" }}>
+        <div style={{ width:36, height:36, border:"2px solid #e0e7ff", borderTopColor:"#4f46e5", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto 12px" }}/>
+        <div style={{ fontSize:10, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.12em" }}>Loading</div>
+        <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
       </div>
     </div>
   );
-}
 
-/* ── Sub-components ── */
-
-function SectionCard({ children }) {
-  return (
-    <div style={{
-      background: "#fff",
-      border: "1px solid #f1f5f9",
-      borderRadius: 24,
-      padding: "20px",
-      width: "100%",
-      boxShadow: "0 1px 3px rgba(0,0,0,0.02)"
-    }}>
-      {children}
-    </div>
-  );
-}
-
-function StatCard({ label, value, icon, percentage, accent }) {
-  const isPositive = accent === "green";
-  const isNegative = accent === "red";
-  
-  const valueColor = isPositive ? "#10b981" : isNegative ? "#ef4444" : "#0f172a";
-  const iconBg = isPositive ? "#ecfdf5" : isNegative ? "#fef2f2" : "#f5f7ff";
-  const iconColor = isPositive ? "#10b981" : isNegative ? "#ef4444" : "#4f46e5";
+  const s       = data.summary;
+  const pnlUp   = (s?.totalPnl ?? 0) >= 0;
+  const pnlPct  = s?.totalInvested > 0 ? (s.totalPnl / s.totalInvested) * 100 : 0;
 
   return (
-    <div style={{
-      background: "#fff",
-      border: "1px solid #f1f5f9",
-      borderRadius: 20,
-      padding: "20px",
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      transition: "transform 0.2s ease, box-shadow 0.2s ease",
-      cursor: "default"
-    }}
-    onMouseEnter={e => {
-      e.currentTarget.style.transform = "translateY(-2px)";
-      e.currentTarget.style.boxShadow = "0 10px 20px rgba(0,0,0,0.04)";
-    }}
-    onMouseLeave={e => {
-      e.currentTarget.style.transform = "none";
-      e.currentTarget.style.boxShadow = "none";
-    }}
-    >
-      <div>
-        <div style={{
-          fontSize: 11,
-          fontWeight: 700,
-          color: "#94a3b8",
-          textTransform: "uppercase",
-          letterSpacing: "0.8px",
-          marginBottom: 6
-        }}>
-          {label}
+    <>
+      <style>{`
+        /* ─── ROOT ─────────────────────────────────── */
+        .dash-root {
+          padding: clamp(12px, 4vw, 32px);
+          max-width: 1400px;
+          margin: 0 auto;
+          background: #fcfcfd;
+          min-height: 100vh;
+          box-sizing: border-box;
+        }
+
+        /* ─── STAT CARDS ───────────────────────────── */
+        .stat-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+        @media (max-width: 600px) {
+          .stat-grid { grid-template-columns: 1fr; }
+        }
+
+        .stat-card {
+          background: #fff;
+          border: 1px solid #f1f5f9;
+          border-radius: 16px;
+          padding: 16px 18px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+          transition: transform 0.2s, box-shadow 0.2s;
+          box-sizing: border-box;
+        }
+        .stat-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+        }
+        .stat-label {
+          font-size: 10px; font-weight: 700; color: #94a3b8;
+          text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px;
+        }
+        .stat-value {
+          font-size: clamp(16px, 2.4vw, 22px);
+          font-weight: 800; letter-spacing: -0.5px; line-height: 1;
+        }
+        .stat-pct {
+          font-size: 12px; font-weight: 700; opacity: 0.85; margin-top: 4px;
+        }
+        .stat-icon {
+          width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          margin-left: 12px;
+        }
+
+        /* ─── MARKET 2-COLUMN ──────────────────────── */
+        .market-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+          margin-bottom: 20px;
+        }
+        @media (max-width: 860px) {
+          .market-grid { grid-template-columns: 1fr; }
+        }
+
+        .section-card {
+          background: #fff;
+          border: 1px solid #f1f5f9;
+          border-radius: 20px;
+          padding: 18px 16px;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+          box-sizing: border-box;
+          overflow: hidden;
+          min-width: 0;
+        }
+
+        /* ─── POSITIONS ────────────────────────────── */
+        .positions-wrap {
+          background: #fff;
+          border: 1px solid #f1f5f9;
+          border-radius: 20px;
+          padding: 4px 8px;
+          overflow: hidden;
+          box-sizing: border-box;
+        }
+        @media (max-width: 600px) {
+          .positions-wrap { padding: 4px 0; border-radius: 14px; }
+        }
+      `}</style>
+
+      <div className="dash-root">
+
+        {/* STATS */}
+        <div className="stat-grid">
+          <div className="stat-card">
+            <div style={{ minWidth:0, flex:1 }}>
+              <div className="stat-label">Invested</div>
+              <div className="stat-value" style={{ color:"#0f172a" }}>
+                ₹{s?.totalInvested?.toLocaleString("en-IN") ?? "0"}
+              </div>
+            </div>
+            <div className="stat-icon" style={{ background:"#f0f4ff", color:"#4f46e5" }}>
+              <Target size={16}/>
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div style={{ minWidth:0, flex:1 }}>
+              <div className="stat-label">Current value</div>
+              <div className="stat-value" style={{ color:"#0f172a" }}>
+                ₹{s?.currentValue?.toLocaleString("en-IN") ?? "0"}
+              </div>
+            </div>
+            <div className="stat-icon" style={{ background:"#f0f9ff", color:"#0ea5e9" }}>
+              <Activity size={16}/>
+            </div>
+          </div>
+
+          <div className="stat-card">
+            <div style={{ minWidth:0, flex:1 }}>
+              <div className="stat-label">Total P&amp;L</div>
+              <div className="stat-value" style={{ color: pnlUp ? "#10b981" : "#ef4444" }}>
+                {pnlUp ? "+" : ""}₹{Math.abs(s?.totalPnl ?? 0).toLocaleString("en-IN")}
+              </div>
+              <div className="stat-pct" style={{ color: pnlUp ? "#10b981" : "#ef4444" }}>
+                {pnlUp ? "+" : ""}{pnlPct.toFixed(2)}%
+              </div>
+            </div>
+            <div className="stat-icon" style={{ background: pnlUp ? "#ecfdf5" : "#fff1f2", color: pnlUp ? "#10b981" : "#ef4444" }}>
+              {pnlUp ? <ArrowUpRight size={16}/> : <ArrowDownRight size={16}/>}
+            </div>
+          </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          <span style={{
-            fontSize: "clamp(18px, 2.2vw, 24px)",
-            fontWeight: 800,
-            color: valueColor,
-            letterSpacing: "-0.5px"
-          }}>
-            {value}
-          </span>
-          
-          {percentage !== undefined && (
-            <span style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: valueColor,
-              opacity: 0.85
-            }}>
-              ({percentage >= 0 ? "+" : ""}{percentage.toFixed(2)}%)
-            </span>
-          )}
+        {/* MARKET WIDGETS */}
+        <div className="market-grid">
+          <div className="section-card">
+            <ReturnLeaders
+              data={marketData}
+              selectedIndex={selectedIndex}
+              onIndexChange={handleIndexChange}
+              onSelectStock={(sym) => navigate(`/stock/${sym}`)}
+            />
+          </div>
+          <div className="section-card">
+            <MarketMoversGrid
+              data={marketData}
+              onSelectStock={(sym) => navigate(`/stock/${sym}`)}
+            />
+          </div>
+        </div>
+
+        {/* POSITIONS */}
+        <div className="positions-wrap">
+          <PositionsList
+            positions={data.analysis?.positions || []}
+            onRefresh={fetchPortfolio}
+            onSelectStock={(sym) => navigate(`/stock/${sym}`)}
+          />
         </div>
       </div>
-
-      <div style={{
-        width: 42,
-        height: 42,
-        borderRadius: 12,
-        background: iconBg,
-        color: iconColor,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        transition: "transform 0.3s ease"
-      }}>
-        {icon}
-      </div>
-    </div>
+    </>
   );
 }
