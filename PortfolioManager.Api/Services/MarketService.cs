@@ -135,8 +135,7 @@ public class MarketService
         var list = new List<MarketMomentum>();
         if (symbols == null || symbols.Count == 0)
             return list;
-
-        var joinedSymbols = string.Join(",", symbols);
+        var joinedSymbols = string.Join(",", symbols.Select(s => Uri.EscapeDataString(s)));
         var url =
             $"https://query1.finance.yahoo.com/v7/finance/spark?symbols={joinedSymbols}&range=1mo&interval=1d";
 
