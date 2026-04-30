@@ -1,3 +1,6 @@
+// src/App.jsx
+// Only change from your original: import IndexDetailView + add its route.
+
 import React, { useState } from "react";
 import { BrowserRouter, Routes, Route, Link, Navigate } from "react-router-dom";
 import { GoogleOAuthProvider } from "@react-oauth/google";
@@ -9,17 +12,17 @@ import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import StrategicTerminal from "./pages/StrategicTerminal";
+import IndexDetailView from "./pages/IndexDetailView";              // ← NEW
 import KineticTape from "./components/KineticTape";
 import GlobalSearch from "./components/GlobalSearch";
 import { PlusCircle, LogOut, User } from "lucide-react";
 
 export default function App() {
-  const [token, setToken] = useState(localStorage.getItem("token"));
-  const [userId, setUserId] = useState(localStorage.getItem("userId"));
+  const [token, setToken]       = useState(localStorage.getItem("token"));
+  const [userId, setUserId]     = useState(localStorage.getItem("userId"));
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshKey, setRefreshKey]   = useState(0);
 
-  // Securely load the key from the .env file using Vite's syntax
   const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   const handleLoginSuccess = (newToken, newUserId) => {
@@ -39,23 +42,17 @@ export default function App() {
   return (
     <BrowserRouter>
       {!token ? (
-        /* --- PUBLIC ROUTES --- */
         <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
           <Routes>
             <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route
-              path="*"
-              element={<Auth onLoginSuccess={handleLoginSuccess} />}
-            />
+            <Route path="/reset-password"  element={<ResetPassword />} />
+            <Route path="*" element={<Auth onLoginSuccess={handleLoginSuccess} />} />
           </Routes>
         </GoogleOAuthProvider>
       ) : (
-        /* --- PROTECTED ROUTES --- */
         <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
           <KineticTape />
 
-          {/* UPDATED: Adjusted padding and gap for mobile screens so it doesn't squish */}
           <nav className="bg-white border-b px-3 md:px-8 py-3 md:py-4 flex justify-between items-center sticky top-0 z-40 shadow-sm gap-2 md:gap-8">
             <Link to="/" className="flex items-center gap-2 shrink-0">
               <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg shadow-indigo-200">
@@ -66,12 +63,10 @@ export default function App() {
               </h1>
             </Link>
 
-            {/* UPDATED: Removed "hidden md:block" so the search bar shows everywhere */}
             <div className="flex-1 max-w-md w-full px-2 md:px-0">
               <GlobalSearch />
             </div>
 
-            {/* UPDATED: Reduced gap slightly on mobile so the icons fit nicely next to the search bar */}
             <div className="flex items-center gap-1 md:gap-3 shrink-0">
               <Link
                 to="/profile"
@@ -99,17 +94,12 @@ export default function App() {
 
           <main className="flex-1 animate-in fade-in duration-700">
             <Routes>
-              <Route
-                path="/"
-                element={<Dashboard userId={userId} key={refreshKey} />}
-              />
-              <Route
-                path="/stock/:symbol"
-                element={<StockDetail userId={userId} />}
-              />
-              <Route path="/profile" element={<Profile userId={userId} />} />
+              <Route path="/"               element={<Dashboard userId={userId} key={refreshKey} />} />
+              <Route path="/stock/:symbol"  element={<StockDetail userId={userId} />} />
+              <Route path="/profile"        element={<Profile userId={userId} />} />
               <Route path="/strategy/:symbol" element={<StrategicTerminal />} />
-              <Route path="*" element={<Navigate to="/" />} />
+              <Route path="/index/:slug"    element={<IndexDetailView />} />  {/* ← NEW */}
+              <Route path="*"               element={<Navigate to="/" />} />
             </Routes>
           </main>
 
