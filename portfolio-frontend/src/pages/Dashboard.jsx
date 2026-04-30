@@ -1,25 +1,31 @@
+// src/pages/Dashboard.jsx
+// Only change from your original:
+//   1. Import IndexCards
+//   2. Add the "Market Indices" section-card above .market-grid
+
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import PositionsList from "../components/PositionsList";
 import MarketMoversGrid from "../components/MarketMoversGrid";
 import ReturnLeaders from "../components/ReturnLeaders";
+import IndexCards from "../components/IndexCards";                    // ← NEW
 import { Activity, Target, ArrowUpRight, ArrowDownRight, Loader2 } from "lucide-react";
 
 const DEFAULT_INDEX = "NIFTY 100";
 
 export default function Dashboard({ userId }) {
-  const [data, setData]             = useState({ summary: null, analysis: null });
+  const [data, setData] = useState({ summary: null, analysis: null });
   const [marketData, setMarketData] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(DEFAULT_INDEX);
-  const [loading, setLoading]       = useState(true);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   const fetchMarket = async (index) => {
     try {
       const res = await api.get(`Portfolio/index-movers?index=${encodeURIComponent(index)}`);
       setMarketData(res.data.data || res.data);
-    } catch (_) {}
+    } catch (_) { }
   };
 
   const fetchPortfolio = async () => {
@@ -30,7 +36,7 @@ export default function Dashboard({ userId }) {
         api.get(`/portfolio/analysis?userId=${userId}`),
       ]);
       setData({ summary: sum.data, analysis: ana.data });
-    } catch (_) {}
+    } catch (_) { }
   };
 
   useEffect(() => {
@@ -47,18 +53,25 @@ export default function Dashboard({ userId }) {
   };
 
   if (loading) return (
-    <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:"60vh" }}>
-      <div style={{ textAlign:"center" }}>
-        <div style={{ width:36, height:36, border:"2px solid #e0e7ff", borderTopColor:"#4f46e5", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto 12px" }}/>
-        <div style={{ fontSize:10, fontWeight:700, color:"#94a3b8", textTransform:"uppercase", letterSpacing:"0.12em" }}>Loading</div>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{
+          width: 36, height: 36, border: "2px solid #e0e7ff",
+          borderTopColor: "#4f46e5", borderRadius: "50%",
+          animation: "spin 0.8s linear infinite", margin: "0 auto 12px",
+        }} />
+        <div style={{
+          fontSize: 10, fontWeight: 700, color: "#94a3b8",
+          textTransform: "uppercase", letterSpacing: "0.12em",
+        }}>Loading</div>
         <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
       </div>
     </div>
   );
 
-  const s       = data.summary;
-  const pnlUp   = (s?.totalPnl ?? 0) >= 0;
-  const pnlPct  = s?.totalInvested > 0 ? (s.totalPnl / s.totalInvested) * 100 : 0;
+  const s = data.summary;
+  const pnlUp = (s?.totalPnl ?? 0) >= 0;
+  const pnlPct = s?.totalInvested > 0 ? (s.totalPnl / s.totalInvested) * 100 : 0;
 
   return (
     <>
@@ -151,38 +164,57 @@ export default function Dashboard({ userId }) {
         @media (max-width: 600px) {
           .positions-wrap { padding: 4px 0; border-radius: 14px; }
         }
+
+        /* ─── INDEX SECTION ────────────────────────── */
+        .indices-section {
+          background: #fff;
+          border: 1px solid #f1f5f9;
+          border-radius: 20px;
+          padding: 14px 16px 6px;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+          box-sizing: border-box;
+          margin-bottom: 20px;
+        }
+        .indices-section-label {
+          font-size: 9px;
+          font-weight: 800;
+          color: #94a3b8;
+          text-transform: uppercase;
+          letter-spacing: 0.12em;
+          margin-bottom: 12px;
+        }
       `}</style>
 
       <div className="dash-root">
 
-        {/* STATS */}
+        {/* ── STATS ─────────────────────────────────────────────── */}
         <div className="stat-grid">
           <div className="stat-card">
-            <div style={{ minWidth:0, flex:1 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div className="stat-label">Invested</div>
-              <div className="stat-value" style={{ color:"#0f172a" }}>
+              <div className="stat-value" style={{ color: "#0f172a" }}>
                 ₹{s?.totalInvested?.toLocaleString("en-IN") ?? "0"}
               </div>
             </div>
-            <div className="stat-icon" style={{ background:"#f0f4ff", color:"#4f46e5" }}>
-              <Target size={16}/>
+            <div className="stat-icon" style={{ background: "#f0f4ff", color: "#4f46e5" }}>
+              <Target size={16} />
             </div>
           </div>
 
           <div className="stat-card">
-            <div style={{ minWidth:0, flex:1 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div className="stat-label">Current value</div>
-              <div className="stat-value" style={{ color:"#0f172a" }}>
+              <div className="stat-value" style={{ color: "#0f172a" }}>
                 ₹{s?.currentValue?.toLocaleString("en-IN") ?? "0"}
               </div>
             </div>
-            <div className="stat-icon" style={{ background:"#f0f9ff", color:"#0ea5e9" }}>
-              <Activity size={16}/>
+            <div className="stat-icon" style={{ background: "#f0f9ff", color: "#0ea5e9" }}>
+              <Activity size={16} />
             </div>
           </div>
 
           <div className="stat-card">
-            <div style={{ minWidth:0, flex:1 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div className="stat-label">Total P&amp;L</div>
               <div className="stat-value" style={{ color: pnlUp ? "#10b981" : "#ef4444" }}>
                 {pnlUp ? "+" : ""}₹{Math.abs(s?.totalPnl ?? 0).toLocaleString("en-IN")}
@@ -191,13 +223,22 @@ export default function Dashboard({ userId }) {
                 {pnlUp ? "+" : ""}{pnlPct.toFixed(2)}%
               </div>
             </div>
-            <div className="stat-icon" style={{ background: pnlUp ? "#ecfdf5" : "#fff1f2", color: pnlUp ? "#10b981" : "#ef4444" }}>
-              {pnlUp ? <ArrowUpRight size={16}/> : <ArrowDownRight size={16}/>}
+            <div className="stat-icon" style={{
+              background: pnlUp ? "#ecfdf5" : "#fff1f2",
+              color: pnlUp ? "#10b981" : "#ef4444",
+            }}>
+              {pnlUp ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
             </div>
           </div>
         </div>
 
-        {/* MARKET WIDGETS */}
+        {/* ── INDEX CARDS (NEW) ──────────────────────────────────── */}
+        <div className="indices-section">
+          <div className="indices-section-label">Market Indices</div>
+          <IndexCards />
+        </div>
+
+        {/* ── MARKET WIDGETS ────────────────────────────────────── */}
         <div className="market-grid">
           <div className="section-card">
             <ReturnLeaders
@@ -215,7 +256,7 @@ export default function Dashboard({ userId }) {
           </div>
         </div>
 
-        {/* POSITIONS */}
+        {/* ── POSITIONS ─────────────────────────────────────────── */}
         <div className="positions-wrap">
           <PositionsList
             positions={data.analysis?.positions || []}
