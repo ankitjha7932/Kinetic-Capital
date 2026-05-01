@@ -1,6 +1,4 @@
 // src/App.jsx
-// Only change from your original: import IndexDetailView + add its route.
-
 import React, { useState } from "react";
 import { BrowserRouter, Routes, Route, Link, Navigate } from "react-router-dom";
 import { GoogleOAuthProvider } from "@react-oauth/google";
@@ -12,16 +10,17 @@ import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import StrategicTerminal from "./pages/StrategicTerminal";
-import IndexDetailView from "./pages/IndexDetailView";              // ← NEW
+import IndexDetailView from "./pages/IndexDetailView";
+import MarketExplorer from "./pages/MarketExplorer";            
 import KineticTape from "./components/KineticTape";
 import GlobalSearch from "./components/GlobalSearch";
 import { PlusCircle, LogOut, User } from "lucide-react";
 
 export default function App() {
-  const [token, setToken]       = useState(localStorage.getItem("token"));
-  const [userId, setUserId]     = useState(localStorage.getItem("userId"));
+  const [token, setToken] = useState(localStorage.getItem("token"));
+  const [userId, setUserId] = useState(localStorage.getItem("userId"));
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [refreshKey, setRefreshKey]   = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -45,7 +44,7 @@ export default function App() {
         <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
           <Routes>
             <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password"  element={<ResetPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="*" element={<Auth onLoginSuccess={handleLoginSuccess} />} />
           </Routes>
         </GoogleOAuthProvider>
@@ -94,12 +93,13 @@ export default function App() {
 
           <main className="flex-1 animate-in fade-in duration-700">
             <Routes>
-              <Route path="/"               element={<Dashboard userId={userId} key={refreshKey} />} />
-              <Route path="/stock/:symbol"  element={<StockDetail userId={userId} />} />
-              <Route path="/profile"        element={<Profile userId={userId} />} />
+              <Route path="/" element={<Dashboard userId={userId} key={refreshKey} />} />
+              <Route path="/stock/:symbol" element={<StockDetail userId={userId} />} />
+              <Route path="/profile" element={<Profile userId={userId} />} />
               <Route path="/strategy/:symbol" element={<StrategicTerminal />} />
-              <Route path="/index/:slug"    element={<IndexDetailView />} />  {/* ← NEW */}
-              <Route path="*"               element={<Navigate to="/" />} />
+              <Route path="/index/:slug" element={<IndexDetailView />} />
+              <Route path="/market" element={<MarketExplorer />} />   {/* ← NEW: Added Route */}
+              <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </main>
 
