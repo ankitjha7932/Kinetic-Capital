@@ -48,7 +48,7 @@ const KineticTape = () => {
                 ₹{stock.price.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
               </span>
               <span className={`kt-chg ${up ? "kt-up" : "kt-dn"}`}>
-                {up ? <TrendingUp size={9} /> : <TrendingDown size={9} />}
+                {up ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
                 {Math.abs(stock.changePercent).toFixed(2)}%
               </span>
               <span className="kt-sep">·</span>
@@ -64,9 +64,9 @@ const KineticTape = () => {
 const styles = `
 .kt-root {
   width: 100%;
-  height: 36px;
+  height: 40px; /* Slightly increased height for better breathing room */
   background: #0a0a0f;
-  border-bottom: 1px solid rgba(99,102,241,0.15);
+  border-bottom: 1px solid rgba(99,102,241,0.2);
   display: flex;
   align-items: center;
   overflow: hidden;
@@ -98,41 +98,41 @@ const styles = `
 .kt-item {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 20px;
+  gap: 10px;
+  padding: 0 24px;
   text-decoration: none;
   transition: background 0.15s;
   cursor: pointer;
-  border-right: 1px solid rgba(255,255,255,0.04);
+  border-right: 1px solid rgba(255,255,255,0.06);
 }
-.kt-item:hover { background: rgba(99,102,241,0.08); }
+.kt-item:hover { background: rgba(99,102,241,0.1); }
 .kt-sym {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: #475569;
+  font-size: 13px; /* Increased from 10px */
+  font-weight: 700;
+  letter-spacing: 0.05em; /* Reduced spacing for better readability */
+  color: #cbd5e1; /* Changed from #475569 to a much brighter slate for high contrast */
   text-transform: uppercase;
   transition: color 0.15s;
 }
-.kt-item:hover .kt-sym { color: #818cf8; }
+.kt-item:hover .kt-sym { color: #ffffff; }
 .kt-price {
-  font-size: 11px;
-  font-weight: 700;
-  color: #e2e8f0;
+  font-size: 13px; /* Increased from 11px */
+  font-weight: 600;
+  color: #f8fafc;
   font-variant-numeric: tabular-nums;
 }
 .kt-chg {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 1px 6px;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
   border-radius: 4px;
 }
-.kt-up { color: #34d399; background: rgba(52,211,153,0.1); }
-.kt-dn { color: #f87171; background: rgba(248,113,113,0.1); }
-.kt-sep { color: rgba(255,255,255,0.06); font-size: 14px; margin-left: 4px; }
+.kt-up { color: #4ade80; background: rgba(74,222,128,0.15); }
+.kt-dn { color: #f87171; background: rgba(248,113,113,0.15); }
+.kt-sep { color: rgba(255,255,255,0.1); font-size: 16px; margin-left: 6px; }
 `;
 
 export default KineticTape;
