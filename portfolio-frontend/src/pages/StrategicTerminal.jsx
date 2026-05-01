@@ -50,7 +50,7 @@ const TypewriterMarkdown = ({ text, onComplete }) => {
     const interval = setInterval(() => {
       setDisplayedText(text.slice(0, i));
       i += 3;
-      
+
       if (i >= text.length + 3) {
         clearInterval(interval);
         onComplete();
@@ -81,6 +81,22 @@ const TypewriterMarkdown = ({ text, onComplete }) => {
     </ReactMarkdown>
   );
 };
+
+function LogoAvatar({ symbol, size = 36, fontSize = 9, radius = 10 }) {
+  const [failed, setFailed] = useState(false);
+  const ticker = symbol?.replace(".NS", "").toUpperCase();
+  const src = `https://assets-netstorage.groww.in/stock-assets/logos2/${ticker}.webp`;
+  if (failed) return (
+    <div style={{ width: size, height: size, borderRadius: radius, background: "#4f46e5", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize, fontWeight: 800, flexShrink: 0 }}>
+      {ticker?.slice(0, 3)}
+    </div>
+  );
+  return (
+    <div style={{ width: size, height: size, borderRadius: radius, background: "#f8fafc", border: "0.5px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+      <img src={src} alt={ticker} style={{ width: size * 0.78, height: size * 0.78, objectFit: "contain" }} onError={() => setFailed(true)} />
+    </div>
+  );
+}
 
 export default function StrategicTerminal() {
   const { symbol } = useParams();
@@ -138,7 +154,7 @@ export default function StrategicTerminal() {
       setIsTyping(true);
 
       setMessages((prev) => [
-        ...prev, 
+        ...prev,
         { role: "bot", text: res.data.message, needsTyping: true }
       ]);
       setFollowUps(res.data.followUps || []);
@@ -158,10 +174,10 @@ export default function StrategicTerminal() {
 
   return (
     <div className="flex h-[100dvh] bg-slate-950 text-slate-200 font-sans overflow-hidden">
-      
+
       {/* Mobile Sidebar Overlay Backdrop */}
       {isMobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
@@ -191,9 +207,10 @@ export default function StrategicTerminal() {
           <p className="text-[10px] font-black text-indigo-500/80 uppercase tracking-[0.3em] mb-1">
             Target Identity
           </p>
-          <h1 className="text-4xl font-black text-white tracking-tighter drop-shadow-2xl truncate">
-            {symbol}
-          </h1>
+          <div className="flex items-center gap-3 mt-1">
+            <LogoAvatar symbol={symbol} size={44} radius={12} fontSize={10} />
+            <h1 className="text-4xl font-black text-white tracking-tighter drop-shadow-2xl truncate">{symbol}</h1>
+          </div>
           <div className="mt-3 flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg w-fit">
             <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
             <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">
@@ -214,14 +231,14 @@ export default function StrategicTerminal() {
             <ParamRow label="Alpha Signal" value="Strong" color="text-emerald-400" />
             <ParamRow label="Volatility" value="Elevated" color="text-amber-400" />
           </div>
-          
+
           {/* UPDATED: Uptime and Latency with Info Panel */}
           <div className="mt-auto bg-slate-800/30 rounded-2xl p-5 border border-white/5 space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-white/5">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 System Telemetry
               </span>
-              <button 
+              <button
                 onClick={() => setShowSysInfo(!showSysInfo)}
                 className="text-slate-500 hover:text-indigo-400 transition-colors bg-white/5 p-1 rounded-md"
               >
@@ -254,7 +271,7 @@ export default function StrategicTerminal() {
         {/* Header */}
         <div className="p-4 md:p-6 flex justify-between items-center border-b border-white/5 bg-slate-950/40 backdrop-blur-md z-10 shrink-0">
           <div className="flex items-center gap-3 md:gap-4">
-            <button 
+            <button
               onClick={() => setIsMobileMenuOpen(true)}
               className="md:hidden text-slate-400 hover:text-white p-2 -ml-2 rounded-lg bg-white/5 border border-white/5"
             >
@@ -265,7 +282,10 @@ export default function StrategicTerminal() {
             </div>
             <div className="truncate">
               <h2 className="text-xs md:text-sm font-black text-white uppercase tracking-[0.2em] truncate flex items-center gap-1.5">
-                Kinetic Command <span className="text-indigo-500 bg-indigo-500/10 px-2 py-0.5 rounded-md truncate">{symbol}</span>
+                Kinetic Command <span className="flex items-center gap-1.5 text-indigo-500 bg-indigo-500/10 px-2 py-0.5 rounded-md truncate">
+                  <LogoAvatar symbol={symbol} size={18} radius={4} fontSize={6} />
+                  {symbol}
+                </span>
               </h2>
               <p className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase tracking-widest truncate mt-0.5">
                 Encrypted Strategic Protocol Active
@@ -277,7 +297,7 @@ export default function StrategicTerminal() {
         {/* Message Feed */}
         <div className="flex-1 overflow-y-auto p-4 md:p-10 space-y-10 no-scrollbar z-10">
           <div className="max-w-3xl mx-auto space-y-12">
-            
+
             {/* INITIAL SAMPLE QUESTIONS */}
             {messages.length === 0 && (
               <div className="space-y-8 animate-in fade-in duration-700">
@@ -326,16 +346,16 @@ export default function StrategicTerminal() {
                         </span>
                       </div>
                       <div className="bg-slate-900/40 border border-white/5 p-5 md:p-8 rounded-[1.5rem] md:rounded-[2rem] text-slate-300 text-[13px] md:text-sm leading-relaxed font-mono shadow-inner backdrop-blur-sm overflow-x-auto">
-                        
+
                         {m.needsTyping ? (
-                          <TypewriterMarkdown 
-                            text={m.text} 
+                          <TypewriterMarkdown
+                            text={m.text}
                             onComplete={() => {
-                              setMessages(prev => prev.map((msg, idx) => 
+                              setMessages(prev => prev.map((msg, idx) =>
                                 idx === i ? { ...msg, needsTyping: false } : msg
                               ));
-                              setIsTyping(false); 
-                            }} 
+                              setIsTyping(false);
+                            }}
                           />
                         ) : (
                           <ReactMarkdown
@@ -351,7 +371,7 @@ export default function StrategicTerminal() {
                             {m.text}
                           </ReactMarkdown>
                         )}
-                        
+
                       </div>
                     </div>
                   )}
@@ -361,22 +381,22 @@ export default function StrategicTerminal() {
 
             {/* Inline Loading Status Bubble */}
             {loadingStatus && (
-               <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-                 <div className="w-full space-y-3 md:space-y-4">
-                    <div className="flex items-center gap-2 text-indigo-400 opacity-60 animate-pulse">
-                      <Cpu size={14} />
-                      <span className="text-[10px] font-black uppercase tracking-[0.3em]">
-                        Processing Request
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-4 py-5 px-6 md:py-6 md:px-8 bg-slate-900/40 border border-white/5 rounded-[1.5rem] md:rounded-[2rem] shadow-inner backdrop-blur-sm w-fit">
-                      <Loader2 size={16} className="animate-spin text-indigo-500" />
-                      <span className="text-[11px] md:text-xs font-bold text-indigo-400 uppercase tracking-[0.2em] animate-pulse">
-                        {loadingStatus}
-                      </span>
-                    </div>
-                 </div>
-               </div>
+              <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="w-full space-y-3 md:space-y-4">
+                  <div className="flex items-center gap-2 text-indigo-400 opacity-60 animate-pulse">
+                    <Cpu size={14} />
+                    <span className="text-[10px] font-black uppercase tracking-[0.3em]">
+                      Processing Request
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 py-5 px-6 md:py-6 md:px-8 bg-slate-900/40 border border-white/5 rounded-[1.5rem] md:rounded-[2rem] shadow-inner backdrop-blur-sm w-fit">
+                    <Loader2 size={16} className="animate-spin text-indigo-500" />
+                    <span className="text-[11px] md:text-xs font-bold text-indigo-400 uppercase tracking-[0.2em] animate-pulse">
+                      {loadingStatus}
+                    </span>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* DYNAMIC FOLLOW-UPS FROM BACKEND */}
@@ -441,7 +461,7 @@ export default function StrategicTerminal() {
                 placeholder={isTyping || loadingStatus ? "Awaiting transmission..." : `Analyze ${symbol}...`}
                 className="w-full bg-slate-900/60 border border-white/10 rounded-2xl md:rounded-[1.5rem] py-4 md:py-6 pl-5 md:pl-8 pr-16 md:pr-20 text-sm md:text-md font-bold text-white shadow-2xl outline-none focus:border-indigo-500 transition-all placeholder:text-slate-600 disabled:opacity-50"
               />
-              <button 
+              <button
                 type="submit"
                 disabled={!input.trim() || loadingStatus || isTyping}
                 className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 bg-indigo-600 text-white rounded-xl shadow-lg hover:bg-indigo-500 transition-all flex items-center justify-center group disabled:opacity-50 disabled:cursor-not-allowed"
