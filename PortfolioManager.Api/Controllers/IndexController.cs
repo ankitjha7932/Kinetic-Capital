@@ -58,7 +58,6 @@ public class IndexController : ControllerBase
         _logger = logger;
     }
 
-    // ── GET /api/index/chart?name=NIFTY BANK&range=1d ────────────────────────
     [HttpGet("chart")]
     public async Task<IActionResult> GetIndexChart(
         [FromQuery] string name,
@@ -70,6 +69,9 @@ public class IndexController : ControllerBase
 
         if (!IndexYahooMap.TryGetValue(name.Trim(), out var yahooSymbol))
             return NotFound($"No Yahoo symbol mapped for index: {name}");
+
+        // ── Market status (calendar-aware) ────────────────────────────────────
+        var mktStatus = MarketCalendar.GetCurrentStatus();
 
         try
         {
@@ -87,7 +89,6 @@ public class IndexController : ControllerBase
                 _ => ("max", "max"),
             };
 
-            // Fetch chart history + live quote in parallel
             var historyTask = FetchHistoricalDirectAsync(yahooSymbol, fetchRange);
             var quoteTask = FetchLiveQuoteAsync(yahooSymbol);
             await Task.WhenAll(historyTask, quoteTask);
@@ -96,11 +97,16 @@ public class IndexController : ControllerBase
             var quote = await quoteTask;
 
             if (history == null || !history.Prices.Any())
-                return Ok(new { success = false, message = "No chart data available" });
+                return Ok(
+                    new
+                    {
+                        success = false,
+                        message = "No chart data available",
+                        marketStatus = BuildMarketStatusPayload(mktStatus),
+                    }
+                );
 
-            var tzId = OperatingSystem.IsWindows() ? "India Standard Time" : "Asia/Kolkata";
-            var ist = TimeZoneInfo.FindSystemTimeZoneById(tzId);
-            var istNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ist);
+            var istNow = mktStatus.CurrentIST;
 
             DateTime cutoff = cutoffMode switch
             {
@@ -127,12 +133,14 @@ public class IndexController : ControllerBase
                 })
                 .ToList();
 
-            // Fallback: if 1d returns < 3 intraday points use last trading day
+            // If market was closed today (holiday/weekend) and range=1d, no intraday data
+            // exists — fall back gracefully to the previous trading day's candles.
             if (cutoffMode == "today" && chartPoints.Count < 3)
             {
-                var lastDate = allPrices.Last().Date.Date;
+                // Use the previous actual trading day rather than "just yesterday"
+                var prevDate = mktStatus.PreviousSessionDate.ToDateTime(TimeOnly.MinValue).Date;
                 chartPoints = allPrices
-                    .Where(p => p.Date.Date == lastDate)
+                    .Where(p => p.Date.Date == prevDate)
                     .Select(p => new
                     {
                         date = p.Date,
@@ -140,11 +148,24 @@ public class IndexController : ControllerBase
                         volume = p.Volume,
                     })
                     .ToList();
+
+                // If still empty (data gap), use whatever the latest available day is
+                if (chartPoints.Count == 0)
+                {
+                    var lastDate = allPrices.Last().Date.Date;
+                    chartPoints = allPrices
+                        .Where(p => p.Date.Date == lastDate)
+                        .Select(p => new
+                        {
+                            date = p.Date,
+                            price = Math.Round(p.Close, 2),
+                            volume = p.Volume,
+                        })
+                        .ToList();
+                }
             }
 
-            // ── Stats Logic ──
-            // Priority: use live quote for official exchange values (Open, Prev Close, etc.)
-            // Fallback: derive from historical data only if live quote is unavailable.
+            // ── Price stats ───────────────────────────────────────────────────
             decimal currentPrice,
                 prevClose,
                 dayChange,
@@ -155,11 +176,9 @@ public class IndexController : ControllerBase
                 week52High,
                 week52Low;
 
-            if (quote != null && quote.RegularMarketOpen > 0)
+            if (quote != null && quote.RegularMarketOpen > 0 && mktStatus.IsOpen)
             {
-                // Use official exchange-provided values from the live quote.
-                // RegularMarketOpen = official 9:15 AM open (matches Groww).
-                // RegularMarketPreviousClose = official previous session close (matches Groww).
+                // ONLY trust Yahoo when market is LIVE
                 currentPrice = quote.RegularMarketPrice;
                 prevClose = quote.RegularMarketPreviousClose;
                 dayChange = quote.RegularMarketChange;
@@ -172,45 +191,44 @@ public class IndexController : ControllerBase
             }
             else
             {
-                // Fallback from historical prices if live quote is unreachable.
-                currentPrice = allPrices.LastOrDefault()?.Close ?? 0;
+                var lastPoint = allPrices.Last();
+                currentPrice = lastPoint.Close;
 
-                // Find the first price at or after 9:15 AM today for the official open.
-                var todayPoints = allPrices
-                    .Where(p => p.Date.Date == istNow.Date)
-                    .OrderBy(p => p.Date)
+                var prevTradingDate = mktStatus
+                    .PreviousSessionDate.ToDateTime(TimeOnly.MinValue)
+                    .Date;
+
+                var prevDayPoints = allPrices
+                    .Where(p => p.Date.Date == prevTradingDate)
+                    .OrderByDescending(p => p.Date)
                     .ToList();
 
-                var firstPointToday = todayPoints.FirstOrDefault(
-                    p => p.Date.TimeOfDay >= new TimeSpan(9, 15, 0)
-                );
-                openPrice =
-                    firstPointToday?.Close
-                    ?? (todayPoints.FirstOrDefault()?.Close ?? currentPrice);
-
-                // For Prev Close, use the last closing price from the previous trading day.
-                var lastTradingDay = allPrices
-                    .Where(p => p.Date.Date < istNow.Date)
+                var secondLastDay = allPrices
+                    .Where(p => p.Date.Date < prevTradingDate)
                     .OrderByDescending(p => p.Date)
                     .FirstOrDefault();
-                prevClose = lastTradingDay?.Close ?? currentPrice;
+
+                prevClose = secondLastDay?.Close ?? currentPrice;
 
                 dayChange = currentPrice - prevClose;
                 dayChangePct = prevClose != 0 ? (dayChange / prevClose) * 100 : 0;
 
+                todayHigh = prevDayPoints.Any() ? prevDayPoints.Max(p => p.Close) : currentPrice;
+                todayLow = prevDayPoints.Any() ? prevDayPoints.Min(p => p.Close) : currentPrice;
+
+                openPrice = prevDayPoints.FirstOrDefault()?.Close ?? currentPrice;
+
                 var trailing252 = allPrices.TakeLast(Math.Min(allPrices.Count, 252)).ToList();
                 week52High = trailing252.Any() ? trailing252.Max(p => p.Close) : currentPrice;
                 week52Low = trailing252.Any() ? trailing252.Min(p => p.Close) : currentPrice;
-                todayHigh = todayPoints.Any() ? todayPoints.Max(p => p.Close) : currentPrice;
-                todayLow = todayPoints.Any() ? todayPoints.Min(p => p.Close) : currentPrice;
             }
-
             return Ok(
                 new
                 {
                     success = true,
                     indexName = name.Trim(),
                     chartData = chartPoints,
+                    marketStatus = BuildMarketStatusPayload(mktStatus),
                     stats = new
                     {
                         currentPrice = Math.Round(currentPrice, 2),
@@ -233,7 +251,6 @@ public class IndexController : ControllerBase
         }
     }
 
-    // ── GET /api/index/constituents ───────────────────────────────────────────
     [HttpGet("constituents")]
     public async Task<IActionResult> GetConstituents(
         [FromQuery] string name,
@@ -261,6 +278,7 @@ public class IndexController : ControllerBase
                         page,
                         pageSize,
                         totalPages = 0,
+                        marketStatus = BuildMarketStatusPayload(MarketCalendar.GetCurrentStatus()),
                     }
                 );
 
@@ -304,6 +322,7 @@ public class IndexController : ControllerBase
                     page,
                     pageSize,
                     totalPages = (int)Math.Ceiling((double)totalCount / pageSize),
+                    marketStatus = BuildMarketStatusPayload(MarketCalendar.GetCurrentStatus()),
                 }
             );
         }
@@ -313,6 +332,38 @@ public class IndexController : ControllerBase
             return StatusCode(500, "Error fetching constituents");
         }
     }
+
+    // ── GET /api/index/market-status ─────────────────────────────────────────
+    /// <summary>
+    /// Lightweight endpoint — returns only the current market status.
+    /// Useful for the frontend to decide how to label prices without
+    /// triggering a full chart/constituents fetch.
+    /// </summary>
+    [HttpGet("market-status")]
+    public IActionResult GetMarketStatus()
+    {
+        var status = MarketCalendar.GetCurrentStatus();
+        return Ok(new { success = true, marketStatus = BuildMarketStatusPayload(status) });
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Converts the internal <see cref="MarketStatus"/> record into a plain object
+    /// that serialises cleanly to JSON for every API response.
+    /// </summary>
+    private static object BuildMarketStatusPayload(MarketStatus s) =>
+        new
+        {
+            isOpen = s.IsOpen,
+            sessionType = s.SessionType, // OPEN | PRE_MARKET | POST_MARKET | HOLIDAY | WEEKEND
+            isLiveData = s.IsLiveData,
+            previousSessionDate = s.PreviousSessionDate.ToString("yyyy-MM-dd"),
+            closedReason = s.ClosedReason, // e.g. "Republic Day" / "Saturday" / null when open
+            currentIST = s.CurrentIST.ToString("yyyy-MM-dd HH:mm:ss"),
+        };
+
+    // ── Private fetch helpers (unchanged from original) ───────────────────────
 
     private record QuoteData(
         decimal RegularMarketPrice,
@@ -339,18 +390,16 @@ public class IndexController : ControllerBase
 
             var encoded = Uri.EscapeDataString(rawSymbol);
             var url = $"https://query1.finance.yahoo.com/v7/finance/quote?symbols={encoded}";
-
             var response = await http.GetAsync(url);
             if (!response.IsSuccessStatusCode)
                 return null;
 
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var result = doc.RootElement.GetProperty("quoteResponse").GetProperty("result");
-
             if (result.GetArrayLength() == 0)
                 return null;
-            var q = result[0];
 
+            var q = result[0];
             decimal Get(string key)
             {
                 if (q.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.Number)
@@ -404,8 +453,8 @@ public class IndexController : ControllerBase
             var encoded = Uri.EscapeDataString(rawSymbol);
             var url =
                 $"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range={range}&interval={interval}";
-
             var response = await http.GetAsync(url);
+
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning(
@@ -419,9 +468,11 @@ public class IndexController : ControllerBase
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             if (!doc.RootElement.TryGetProperty("chart", out var chart))
                 return null;
+
             var resArr = chart.GetProperty("result");
             if (resArr.GetArrayLength() == 0)
                 return null;
+
             var res = resArr[0];
             if (!res.TryGetProperty("timestamp", out var tProp))
                 return null;

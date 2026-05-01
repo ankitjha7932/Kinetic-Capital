@@ -29,8 +29,17 @@ public class IndexMoversResponse
     public List<MarketMomentum> VolumeShockers { get; init; } = new();
     public List<MarketMomentum> TopReturnsWeekly { get; init; } = new();
     public List<MarketMomentum> TopReturnsMonthly { get; init; } = new();
+    public MarketStatusPayload? MarketStatus { get; init; }
     public DateTime LastUpdated { get; init; }
 
     public static IndexMoversResponse NotFound(string indexName) =>
         new() { Found = false, Index = indexName.ToUpperInvariant() };
+}
+
+public class MarketStatusPayload
+{
+    public string Status { get; init; } = string.Empty; // e.g., "Open", "Holiday"
+    public bool IsLiveData { get; init; }
+    public string Message { get; init; } = string.Empty; // e.g., "Good Friday" or "Closed"
+    public DateTime LastClosingDate { get; init; }
 }

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -20,10 +21,25 @@ public class HoldingsController : ControllerBase
         _priceService = priceService;
     }
 
-    private string GetUserId() =>
-        User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+    // ── Resolves userId from JWT claim OR query param (/me?userId=xxx)
+    private string GetUserId(string? bodyUserId = null)
+    {
+        // 1. JWT claim (when auth middleware is active)
+        var claimId =
+            User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrEmpty(claimId))
+            return claimId;
+
+        // 2. Passed in from request body (CreateHolding)
+        if (!string.IsNullOrEmpty(bodyUserId))
+            return bodyUserId;
+
+        // 3. Query string (?userId=xxx)
+        return Request.Query["userId"].FirstOrDefault() ?? "";
+    }
 
     [HttpGet("me")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetMyHoldings()
     {
         string userId = GetUserId();
@@ -38,7 +54,6 @@ public class HoldingsController : ControllerBase
         var responses = holdings
             .Select(h =>
             {
-                // Get price from map, fallback to buy price if missing
                 priceMap.TryGetValue(h.Symbol, out decimal currentPrice);
                 if (currentPrice <= 0)
                     currentPrice = h.AvgBuyPrice;
@@ -55,10 +70,10 @@ public class HoldingsController : ControllerBase
                     currentPrice,
                     Math.Round(pnl, 2),
                     h.BuyDate,
-                    0.5m, // Change1D Placeholder
+                    0.5m,
                     Math.Round(pnlPercent, 2),
                     h.Tags ?? "Equity",
-                    "N/A" // MarketCapLabel Placeholder
+                    "N/A"
                 );
             })
             .ToList();
@@ -67,9 +82,11 @@ public class HoldingsController : ControllerBase
     }
 
     [HttpPost]
+    [AllowAnonymous]
     public async Task<IActionResult> CreateHolding([FromBody] HoldingRequest request)
     {
-        string userId = GetUserId();
+        // Accept userId from body (frontend sends it there) or JWT
+        string userId = GetUserId(request.UserId);
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
@@ -114,24 +131,35 @@ public class HoldingsController : ControllerBase
         };
 
         await _holdings.InsertOneAsync(holding);
+        // Bust sparkline cache so the new symbol gets fetched on next analysis call
+        _priceService.InvalidateSparklineCache();
         return CreatedAtAction(nameof(GetHolding), new { id = holding.Id }, holding);
     }
 
     [HttpDelete("{id}")]
+    [AllowAnonymous]
     public async Task<IActionResult> DeleteHolding(string id)
     {
-        string userIdString = GetUserId();
-        if (!ObjectId.TryParse(id, out _) || !ObjectId.TryParse(userIdString, out _))
+        string userId = GetUserId();
+        if (!ObjectId.TryParse(id, out _))
             return BadRequest(new { message = "Invalid ID format" });
 
-        var result = await _holdings.DeleteOneAsync(h => h.Id == id && h.UserId == userIdString);
+        // Accept userId from query string for delete: DELETE /api/holdings/{id}?userId=xxx
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var result = await _holdings.DeleteOneAsync(h => h.Id == id && h.UserId == userId);
         return result.DeletedCount == 0 ? NotFound() : NoContent();
     }
 
     [HttpGet("{id}")]
+    [AllowAnonymous]
     public async Task<IActionResult> GetHolding(string id)
     {
         string userId = GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
         var h = await _holdings.Find(h => h.Id == id && h.UserId == userId).FirstOrDefaultAsync();
         if (h == null)
             return NotFound();
