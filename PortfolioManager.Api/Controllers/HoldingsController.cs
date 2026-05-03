@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,18 +25,38 @@ public class HoldingsController : ControllerBase
     // ── Resolves userId from JWT claim OR query param (/me?userId=xxx)
     private string GetUserId(string? bodyUserId = null)
     {
-        // 1. JWT claim (when auth middleware is active)
+        // 1. Try JWT claims (works when [Authorize] is applied)
         var claimId =
             User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (!string.IsNullOrEmpty(claimId))
             return claimId;
 
-        // 2. Passed in from request body (CreateHolding)
+        // 2. Passed in from request body
         if (!string.IsNullOrEmpty(bodyUserId))
             return bodyUserId;
 
-        // 3. Query string (?userId=xxx)
-        return Request.Query["userId"].FirstOrDefault() ?? "";
+        // 3. Query string
+        var queryId = Request.Query["userId"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(queryId))
+            return queryId;
+
+        // 4. Manually parse Authorization header (for [AllowAnonymous] endpoints)
+        var authHeader = Request.Headers["Authorization"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
+        {
+            try
+            {
+                var token = authHeader.Substring(7);
+                var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+                var jwt = handler.ReadJwtToken(token);
+                var sub = jwt.Claims.FirstOrDefault(c => c.Type == "sub")?.Value;
+                if (!string.IsNullOrEmpty(sub))
+                    return sub;
+            }
+            catch { }
+        }
+
+        return "";
     }
 
     [HttpGet("me")]

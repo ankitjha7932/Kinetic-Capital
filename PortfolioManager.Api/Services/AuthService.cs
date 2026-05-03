@@ -18,8 +18,8 @@ public class AuthService
 
     public AuthService(IMongoDatabase db, IEmailService emailService, IConfiguration config)
     {
-        _users = db.GetCollection<User>("users");
-        _otps = db.GetCollection<Otp>("otps");
+        _users = db.GetCollection<User>("Users");
+        _otps = db.GetCollection<Otp>("Otps");
         _emailService = emailService;
         _config = config;
     }
@@ -115,7 +115,6 @@ public class AuthService
 
         string token = Guid.NewGuid().ToString();
 
-        // FIX 1: Save token to DB BEFORE sending the email.
         // Previously the token was saved after sending, meaning if the DB write
         // failed the user would get a link with a token that doesn't exist.
         try
@@ -133,7 +132,6 @@ public class AuthService
             return (false, "Failed to generate reset token. Try again.");
         }
 
-        // FIX 2: Use a configurable frontend URL so local dev and production
         // both work. Set FRONTEND_URL=http://localhost:5173 in your .env for
         // local dev, and FRONTEND_URL=https://kinetic-capital.vercel.app on Render.
         var frontendUrl =
