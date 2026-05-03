@@ -2,8 +2,8 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Google.Apis.Auth;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using MongoDB.Driver;
 using PortfolioManager.Api.Models;
 using static BCrypt.Net.BCrypt;
 
@@ -11,13 +11,15 @@ namespace PortfolioManager.Api.Services;
 
 public class AuthService
 {
-    private readonly AppDbContext _db;
+    private readonly IMongoCollection<User> _users;
+    private readonly IMongoCollection<Otp> _otps;
     private readonly IEmailService _emailService;
     private readonly IConfiguration _config;
 
-    public AuthService(AppDbContext db, IEmailService emailService, IConfiguration config)
+    public AuthService(IMongoDatabase db, IEmailService emailService, IConfiguration config)
     {
-        _db = db;
+        _users = db.GetCollection<User>("users");
+        _otps = db.GetCollection<Otp>("otps");
         _emailService = emailService;
         _config = config;
     }
@@ -29,18 +31,21 @@ public class AuthService
     {
         email = email.Trim().ToLower();
 
-        if (isRegistration && await _db.Users.AnyAsync(u => u.Email == email))
+        if (isRegistration && await _users.Find(u => u.Email == email).AnyAsync())
             return (false, "This email is already registered. Please sign in.");
 
         var oneHourAgo = DateTime.UtcNow.AddHours(-1);
-        if (await _db.Otps.CountAsync(o => o.Email == email && o.CreatedAt > oneHourAgo) >= 3)
+        var recentCount = await _otps.CountDocumentsAsync(o =>
+            o.Email == email && o.CreatedAt > oneHourAgo
+        );
+        if (recentCount >= 3)
             return (false, "Too many requests. Try again in an hour.");
 
         var otpCode = Random.Shared.Next(100000, 999999).ToString();
         var hashedOtp = HashPassword(otpCode);
 
-        _db.Otps.RemoveRange(_db.Otps.Where(o => o.Email == email));
-        _db.Otps.Add(
+        await _otps.DeleteManyAsync(o => o.Email == email);
+        await _otps.InsertOneAsync(
             new Otp
             {
                 Email = email,
@@ -50,9 +55,7 @@ public class AuthService
             }
         );
 
-        await _db.SaveChangesAsync();
         await _emailService.SendOtpEmailAsync(email, otpCode);
-
         return (true, "OTP sent successfully.");
     }
 
@@ -63,38 +66,47 @@ public class AuthService
     {
         email = email.Trim().ToLower();
 
-        var otpRecord = await _db
-            .Otps.Where(o => o.Email == email && !o.IsVerified)
-            .OrderByDescending(o => o.CreatedAt)
+        var otpRecord = await _otps
+            .Find(o => o.Email == email && !o.IsVerified)
+            .SortByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync();
 
-        if (otpRecord == null || otpRecord.Attempts >= 5 || !Verify(otp, otpRecord.HashedOtp))
+        if (
+            otpRecord == null
+            || otpRecord.Attempts >= 5
+            || otpRecord.ExpiresAt < DateTime.UtcNow
+            || !Verify(otp, otpRecord.HashedOtp)
+        )
         {
             if (otpRecord != null)
             {
-                otpRecord.Attempts++;
-                await _db.SaveChangesAsync();
+                await _otps.UpdateOneAsync(
+                    o => o.Id == otpRecord.Id,
+                    Builders<Otp>.Update.Inc(o => o.Attempts, 1)
+                );
             }
             return (false, "Invalid or expired OTP.", null, null);
         }
 
-        otpRecord.IsVerified = true;
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
+        await _otps.UpdateOneAsync(
+            o => o.Id == otpRecord.Id,
+            Builders<Otp>.Update.Set(o => o.IsVerified, true)
+        );
 
+        var user = await _users.Find(u => u.Email == email).FirstOrDefaultAsync();
         if (user == null)
         {
             user = new User { Email = email, CreatedAt = DateTime.UtcNow };
-            _db.Users.Add(user);
+            await _users.InsertOneAsync(user);
         }
 
-        await _db.SaveChangesAsync();
         return (true, "Verified", GenerateJwt(user.Id, user.Email!), user.Id);
     }
 
     public async Task<(bool Success, string Message)> ForgotPasswordAsync(string email)
     {
         email = email.Trim().ToLower();
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
+        var user = await _users.Find(u => u.Email == email).FirstOrDefaultAsync();
         if (user == null)
             return (false, "Email not registered.");
 
@@ -102,20 +114,51 @@ public class AuthService
             return (false, "Please wait 15 minutes before requesting again.");
 
         string token = Guid.NewGuid().ToString();
-        string resetLink = $"https://kinetic-capital.vercel.app/reset-password?token={token}";
+
+        // FIX 1: Save token to DB BEFORE sending the email.
+        // Previously the token was saved after sending, meaning if the DB write
+        // failed the user would get a link with a token that doesn't exist.
+        try
+        {
+            await _users.UpdateOneAsync(
+                u => u.Id == user.Id,
+                Builders<User>
+                    .Update.Set(u => u.ResetToken, token)
+                    .Set(u => u.ResetTokenExpiry, DateTime.UtcNow.AddHours(1))
+                    .Set(u => u.LastResetRequest, DateTime.UtcNow)
+            );
+        }
+        catch
+        {
+            return (false, "Failed to generate reset token. Try again.");
+        }
+
+        // FIX 2: Use a configurable frontend URL so local dev and production
+        // both work. Set FRONTEND_URL=http://localhost:5173 in your .env for
+        // local dev, and FRONTEND_URL=https://kinetic-capital.vercel.app on Render.
+        var frontendUrl =
+            Environment.GetEnvironmentVariable("FRONTEND_URL")
+            ?? _config["App:FrontendUrl"]
+            ?? "https://kinetic-capital.vercel.app";
+
+        string resetLink = $"{frontendUrl}/reset-password?token={token}";
 
         try
         {
             await _emailService.SendResetEmailAsync(email, resetLink);
-            user.ResetToken = token;
-            user.ResetTokenExpiry = DateTime.UtcNow.AddHours(1);
-            user.LastResetRequest = DateTime.UtcNow;
-
-            await _db.SaveChangesAsync();
             return (true, "Reset link sent.");
         }
         catch
         {
+            // Email failed — clear the token so it can't be used with a link
+            // that was never delivered.
+            await _users.UpdateOneAsync(
+                u => u.Id == user.Id,
+                Builders<User>
+                    .Update.Set(u => u.ResetToken, null)
+                    .Set(u => u.ResetTokenExpiry, null)
+                    .Set(u => u.LastResetRequest, null)
+            );
             return (false, "Email service failed. Try again later.");
         }
     }
@@ -125,17 +168,19 @@ public class AuthService
         string newPassword
     )
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u =>
-            u.ResetToken == token && u.ResetTokenExpiry > DateTime.UtcNow
-        );
+        var user = await _users
+            .Find(u => u.ResetToken == token && u.ResetTokenExpiry > DateTime.UtcNow)
+            .FirstOrDefaultAsync();
         if (user == null)
             return (false, "Invalid or expired token.");
 
-        user.PasswordHash = HashPassword(newPassword);
-        user.ResetToken = null;
-        user.ResetTokenExpiry = null;
-
-        await _db.SaveChangesAsync();
+        await _users.UpdateOneAsync(
+            u => u.Id == user.Id,
+            Builders<User>
+                .Update.Set(u => u.PasswordHash, HashPassword(newPassword))
+                .Set(u => u.ResetToken, null)
+                .Set(u => u.ResetTokenExpiry, null)
+        );
         return (true, "Password updated.");
     }
 
@@ -145,7 +190,7 @@ public class AuthService
     )
     {
         email = email.Trim().ToLower();
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
+        var user = await _users.Find(u => u.Email == email).FirstOrDefaultAsync();
 
         if (
             user == null
@@ -166,7 +211,6 @@ public class AuthService
     {
         try
         {
-            // Improved Environment Variable Check
             var clientId =
                 Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID")
                 ?? Environment.GetEnvironmentVariable("VITE_GOOGLE_CLIENT_ID")
@@ -183,9 +227,9 @@ public class AuthService
             var payload = await GoogleJsonWebSignature.ValidateAsync(googleToken, settings);
             string email = payload.Email.ToLower().Trim();
 
-            var user = await _db.Users.FirstOrDefaultAsync(u =>
-                u.GoogleId == payload.Subject || u.Email == email
-            );
+            var user = await _users
+                .Find(u => u.GoogleId == payload.Subject || u.Email == email)
+                .FirstOrDefaultAsync();
 
             if (user == null)
             {
@@ -196,15 +240,18 @@ public class AuthService
                     FullName = payload.Name,
                     CreatedAt = DateTime.UtcNow,
                 };
-                _db.Users.Add(user);
+                await _users.InsertOneAsync(user);
             }
             else if (string.IsNullOrEmpty(user.GoogleId))
             {
-                user.GoogleId = payload.Subject;
-                user.FullName ??= payload.Name;
+                await _users.UpdateOneAsync(
+                    u => u.Id == user.Id,
+                    Builders<User>
+                        .Update.Set(u => u.GoogleId, payload.Subject)
+                        .Set(u => u.FullName, user.FullName ?? payload.Name)
+                );
             }
 
-            await _db.SaveChangesAsync();
             return (true, "Success", GenerateJwt(user.Id, user.Email!), user.Id);
         }
         catch (Exception ex)
