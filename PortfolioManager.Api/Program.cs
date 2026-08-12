@@ -112,6 +112,7 @@ builder
     );
 
 builder.Services.AddHostedService<MarketScannerWorker>();
+builder.Services.AddMemoryCache();
 
 // --- 6. JWT AUTHENTICATION ---
 var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") ?? builder.Configuration["Jwt:Key"];

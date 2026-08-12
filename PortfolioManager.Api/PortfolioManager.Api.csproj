@@ -28,6 +28,7 @@
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.5" />
     <PackageReference Include="MongoDB.Driver" Version="3.7.0" />
     <PackageReference Include="MongoDB.EntityFrameworkCore" Version="9.0.0" />
+    <PackageReference Include="Skender.Stock.Indicators" Version="2.7.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
     <PackageReference Include="System.ServiceModel.Syndication" Version="10.0.3" />
