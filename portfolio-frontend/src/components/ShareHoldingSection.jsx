@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   PieChart,
   Pie,
   Cell,
+  Sector,
   ResponsiveContainer,
   Tooltip,
   BarChart,
@@ -34,6 +35,7 @@ const COLORS = [
 
 const ShareholdingSection = ({ data, analysis, onOpenTrades }) => {
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   useEffect(() => {
     if (data?.pieData?.length > 0 && !selectedCategory) {
@@ -63,6 +65,84 @@ const ShareholdingSection = ({ data, analysis, onOpenTrades }) => {
 
   const trendData = getTrendData();
 
+  // Rows like "No. of Shareholders" are head-counts, not percentages of
+  // holding — they must never enter the pie, or they'll swamp the real
+  // ownership percentages (a count in the hundreds of thousands vs. values
+  // that should sum to ~100%).
+  const NON_PERCENTAGE_CATEGORIES = ["shareholder", "holder", "count"];
+  const isPercentageCategory = (name) =>
+    !NON_PERCENTAGE_CATEGORIES.some((kw) =>
+      String(name).toLowerCase().includes(kw),
+    );
+
+  const pieData = useMemo(
+    () =>
+      data.history
+        .filter((row) => isPercentageCategory(row.category))
+        .map((row) => ({
+          name: row.category,
+          value:
+            parseFloat(
+              String(row.values?.[data.latestQuarterName] ?? "0")
+                .replace(/%/g, "")
+                .replace(/,/g, ""),
+            ) || 0,
+        }))
+        .filter((item) => item.value > 0),
+    [data],
+  );
+
+  const totalValue = useMemo(
+    () => pieData.reduce((sum, item) => sum + item.value, 0),
+    [pieData],
+  );
+
+  // Keep the exploded / highlighted slice in sync with whichever category is selected
+  useEffect(() => {
+    const idx = pieData.findIndex((d) => d.name === selectedCategory);
+    if (idx !== -1) setActiveIndex(idx);
+  }, [selectedCategory, pieData]);
+
+  const handleSelect = (name) => setSelectedCategory(name);
+
+  const activeEntry = pieData[activeIndex];
+  // Read the percentage straight from the latest quarter's value rather than
+  // recomputing a share of the pie total — these rows already ARE percentages.
+  const activePercent = activeEntry?.value || 0;
+
+  // Simple flat "pop-out" highlight for the active slice — no gradients,
+  // no extrusion, just a clean 2D wedge that lifts out with a bold outline.
+  const renderActiveShape = (props) => {
+    const {
+      cx,
+      cy,
+      midAngle,
+      innerRadius,
+      outerRadius,
+      startAngle,
+      endAngle,
+      fill,
+    } = props;
+    const RAD = Math.PI / 180;
+    const popOut = 10;
+    const sx = cx + popOut * Math.cos(-midAngle * RAD);
+    const sy = cy + popOut * Math.sin(-midAngle * RAD);
+
+    return (
+      <Sector
+        cx={sx}
+        cy={sy}
+        innerRadius={innerRadius}
+        outerRadius={outerRadius + 4}
+        startAngle={startAngle}
+        endAngle={endAngle}
+        fill={fill}
+        stroke="#0f172a"
+        strokeWidth={2}
+      />
+    );
+  };
+
   return (
     <div className="space-y-10 mt-20 pb-20">
       {/* --- HEADER SECTION --- */}
@@ -72,7 +152,6 @@ const ShareholdingSection = ({ data, analysis, onOpenTrades }) => {
             Shareholding Pattern
           </h2>
 
-          {/* 1. ADDED: MAIN TRADE INTELLIGENCE TRIGGER */}
           <button
             onClick={onOpenTrades}
             className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-200 border border-slate-800"
@@ -124,9 +203,9 @@ const ShareholdingSection = ({ data, analysis, onOpenTrades }) => {
 
       {/* --- INTERACTIVE VISUALIZATION GRID --- */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-        {/* LEFT: PIZZA PIE CHART */}
+        {/* LEFT: 3D PIE CHART */}
         <div className="lg:col-span-2 bg-white p-10 rounded-[48px] border border-slate-100 shadow-sm flex flex-col items-center">
-          <div className="w-full mb-6 text-center">
+          <div className="w-full mb-2 text-center">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">
               Current Anchor
             </h3>
@@ -135,42 +214,56 @@ const ShareholdingSection = ({ data, analysis, onOpenTrades }) => {
             </p>
           </div>
 
-          <div className="h-[340px] w-full">
+          {/* Percentage callout for the active slice */}
+          <div className="mb-2 flex flex-col items-center">
+            <span
+              className="text-4xl font-black tracking-tight transition-all duration-300"
+              style={{ color: COLORS[activeIndex % COLORS.length] }}
+            >
+              {activePercent.toFixed(2)}%
+            </span>
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              {activeEntry?.name}
+            </span>
+          </div>
+
+          <div className="h-[320px] w-full relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={data.pieData}
+                  data={pieData}
                   cx="50%"
                   cy="50%"
-                  outerRadius={130}
+                  outerRadius={128}
                   innerRadius={0}
                   paddingAngle={2}
                   dataKey="value"
                   stroke="#fff"
-                  strokeWidth={4}
-                  onClick={(entry) => setSelectedCategory(entry.name)}
+                  strokeWidth={3}
+                  activeIndex={activeIndex}
+                  activeShape={renderActiveShape}
+                  onClick={(entry) => handleSelect(entry.name)}
                   style={{ cursor: "pointer", outline: "none" }}
                 >
-                  {data.pieData.map((entry, index) => (
+                  {pieData.map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={COLORS[index % COLORS.length]}
-                      stroke={selectedCategory === entry.name ? "#000" : "#fff"}
-                      strokeWidth={selectedCategory === entry.name ? 2 : 4}
-                      className="hover:opacity-80 transition-all duration-300"
+                      className="hover:opacity-90 transition-all duration-300"
                     />
                   ))}
                 </Pie>
+
                 <Tooltip content={<CustomPieTooltip />} />
               </PieChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="flex flex-wrap justify-center gap-2 mt-6">
-            {data.pieData.map((entry, index) => (
+          <div className="flex flex-wrap justify-center gap-2 mt-4">
+            {pieData.map((entry, index) => (
               <button
                 key={entry.name}
-                onClick={() => setSelectedCategory(entry.name)}
+                onClick={() => handleSelect(entry.name)}
                 className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase transition-all ${
                   selectedCategory === entry.name
                     ? "bg-slate-900 border-slate-900 text-white shadow-lg scale-105"
@@ -272,7 +365,7 @@ const CustomPieTooltip = ({ active, payload }) => {
   if (active && payload?.[0]) {
     return (
       <div className="bg-slate-900 text-white px-4 py-2 rounded-2xl shadow-2xl border border-white/10 text-xs font-black">
-        {payload[0].name}: {payload[0].value}%
+        {payload[0].name}: {payload[0].value.toFixed(2)}%
       </div>
     );
   }
