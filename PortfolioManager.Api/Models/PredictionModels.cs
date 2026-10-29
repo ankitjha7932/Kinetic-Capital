@@ -13,7 +13,9 @@ public record StockTacticalInsight(
     List<string> RiskFlags, // explicit reasons the score was discounted
     TacticalMetrics Metrics,
     FundamentalHealthCheck Health,
-    ForwardOutlook Forecast // NEW: rules-based "coming days" projection, see disclaimer on the endpoint response
+    ForwardOutlook Forecast, // NEW: rules-based "coming days" projection, see disclaimer on the endpoint response
+    QuarterlyResultQuality EarningsTrend, // NEW: fundamentals-only result-quality composite
+    string DivergenceCategory  
 );
 
 public record TacticalMetrics(
@@ -32,7 +34,8 @@ public record TacticalMetrics(
     decimal Velocity20D, // 20-day return %, used for relative-strength calc
     decimal RelativeStrength20D, // stock 20D return minus benchmark 20D return (points). >0 = outperforming.
     decimal Adx, // Average Directional Index (14) — trend strength, not direction
-    string TrendStrengthLabel // "Strong Trend", "Developing Trend", "Choppy / Range-bound"
+    string TrendStrengthLabel, // "Strong Trend", "Developing Trend", "Choppy / Range-bound"
+    decimal PriceChange6M  
 );
 
 // === Fundamental health gate — auditable, drives the score multiplier ===
@@ -77,4 +80,24 @@ public record ForwardOutlook(
     decimal Expected5DLow,
     decimal Expected5DHigh,
     List<string> Notes
+);
+
+public record QuarterlyResultQuality(
+    decimal RevenueYoyGrowth,
+    decimal OperatingProfitYoyGrowth,
+    decimal NetProfitYoyGrowth,
+    decimal EpsYoyGrowth,
+    decimal OpmLatest,
+    decimal OpmYoyChangePts,
+    decimal OtherIncomeShareOfPbt,
+    bool OtherIncomeDriven,
+    decimal EffectiveTaxRateLatest,
+    decimal EffectiveTaxRateChangePts,
+    bool TaxRateDriven,
+    int ConsecutiveQuartersRevenueGrowth,
+    int ConsecutiveQuartersProfitGrowth,
+    bool IsAccelerating,
+    double QualityScore,
+    bool IsReliable,
+    List<string> Signals
 );
