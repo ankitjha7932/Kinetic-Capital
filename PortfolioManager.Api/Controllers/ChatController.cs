@@ -72,7 +72,7 @@ namespace PortfolioManager.Api.Controllers
             // ── 3. Call Groq ──────────────────────────────────────────────────────
             var payload = new
             {
-                model = "llama-3.3-70b-versatile",
+                model = "openai/gpt-oss-120b",
                 messages,
                 temperature = 0.75, // slightly higher = more varied phrasing each time
                 max_tokens = 700,

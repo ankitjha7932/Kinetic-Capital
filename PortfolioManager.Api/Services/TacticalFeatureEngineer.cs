@@ -67,10 +67,7 @@ public class TacticalFeatureEngineer
             .ToList();
     }
 
-    // ---- NEW: broader market regime, computed once per scan cycle from index history ----
-    // Callers should fetch ~220 days of the benchmark index (e.g. NIFTY 50) the same way they
-    // fetch stock history, and pass the resulting points here once, then reuse the returned
-    // MarketRegime for every call to GenerateInsights in that cycle.
+    // ---- Broader market regime, computed once per scan cycle from index history ----
     public static MarketRegime ComputeMarketRegime(
         string indexSymbol,
         List<ChartDataPoint> indexPoints
@@ -160,11 +157,24 @@ public class TacticalFeatureEngineer
                 new(),
                 EmptyMetrics(),
                 EmptyHealth("Insufficient price history to evaluate."),
-                EmptyOutlook()
+                EmptyOutlook(),
+                EmptyQuarterlyResultQuality(),
+                "Insufficient Data"
             );
         }
-
         rawPoints = rawPoints.OrderBy(p => p.Date).ToList();
+
+        // FIX: drop today's incomplete candle (IST market closes 15:30). A partial-day volume
+        // made VolumeMultiplier / OBV / velocity unreliable. Assumes ChartDataPoint.Date is DateTime.
+        var nowIst = DateTime.UtcNow.AddHours(5.5);
+        if (
+            rawPoints.Count > 30
+            && rawPoints.Last().Date.Date == nowIst.Date
+            && nowIst.TimeOfDay < new TimeSpan(15, 45, 0)
+        )
+        {
+            rawPoints = rawPoints.Take(rawPoints.Count - 1).ToList();
+        }
 
         var quotes = rawPoints
             .Select(p => new Quote
@@ -189,7 +199,7 @@ public class TacticalFeatureEngineer
         var bma3List = quotes.GetEma(3).ToList();
         var bma9List = quotes.GetEma(9).ToList();
         var obvList = quotes.GetObv().ToList();
-        var adxList = quotes.GetAdx(14).ToList(); // NEW: trend strength
+        var adxList = quotes.GetAdx(14).ToList();
 
         var currentRsi = (decimal)(rsiList.LastOrDefault()?.Rsi ?? 50);
         var previousRsi = (decimal)(rsiList.Count >= 2 ? rsiList[^2]?.Rsi ?? 50 : 50);
@@ -251,16 +261,21 @@ public class TacticalFeatureEngineer
         decimal velocity20D =
             price20DaysAgo > 0 ? ((currentPrice - price20DaysAgo) / price20DaysAgo) * 100 : 0;
 
-        // --- NEW: relative strength vs the broader market ---
-        decimal relativeStrength20D =
-            regime != null ? velocity20D - regime.Momentum20D : velocity20D;
+        decimal price6MAgo =
+            rawPoints.Count >= 126 ? rawPoints[^126].Price : rawPoints.First().Price;
+        decimal priceChange6M = price6MAgo > 0 ? ((currentPrice - price6MAgo) / price6MAgo) * 100 : 0;
+
+        // --- Relative strength vs the broader market ---
+        // FIX: if the benchmark failed to load (IndexPrice == 0), relative strength is unknown (0),
+        // not "the stock's own 20D return" which made every stock look like a leader/laggard.
+        bool hasRegime = regime != null && regime.IndexPrice > 0;
+        decimal relativeStrength20D = hasRegime ? velocity20D - regime!.Momentum20D : 0;
 
         // --- OBV trend confirmation ---
-        // Checks whether volume has genuinely been accumulating in the direction of the
-        // recent price move, vs. a price move happening on thin/unconvinced volume.
         string obvTrend = "Insufficient Data";
         bool obvDiverging = false;
         bool obvConfirming = false;
+        bool obvAccumulating = false;
         if (obvList.Count >= 11)
         {
             double obvNow = obvList.Last().Obv;
@@ -269,6 +284,7 @@ public class TacticalFeatureEngineer
 
             if (velocity7D > 1.0m && obvDelta < 0)
             {
+                // price rising on net-distribution volume: bearish divergence
                 obvTrend = "Diverging";
                 obvDiverging = true;
             }
@@ -279,8 +295,10 @@ public class TacticalFeatureEngineer
             }
             else if (velocity7D < -1.0m && obvDelta > 0)
             {
-                obvTrend = "Diverging"; // price falling but volume net-accumulating — early basing signal, flagged either way for visibility
-                obvDiverging = true;
+                // FIX: price falling but volume net-accumulating is a BULLISH basing signal,
+                // it was previously penalised as "divergence".
+                obvTrend = "Accumulating";
+                obvAccumulating = true;
             }
             else
             {
@@ -297,6 +315,8 @@ public class TacticalFeatureEngineer
         }
 
         // === Technical scoring matrix ===
+        // NOTE: custom numeric formats use "0.0" (one decimal). The old "0.1" meant
+        // "digit, dot, literal 1", which printed 25.1 as "251".
         var triggers = new List<string>();
         double score = 40.0;
         string category = "Stable / Consolidating";
@@ -308,7 +328,7 @@ public class TacticalFeatureEngineer
             double rsiBonus = Math.Clamp(15.0 + (rsiVelocity * 2.5), 15.0, 25.0);
             score += rsiBonus;
             triggers.Add(
-                $"OVERSOLD_REVERSAL: RSI crossed above oversold baseline with a velocity of +{rsiVelocity:0.2}/day. (+{rsiBonus:0.1} Pts)"
+                $"OVERSOLD_REVERSAL: RSI crossed above oversold baseline with a velocity of +{rsiVelocity:0.0}/day. (+{rsiBonus:0.0} Pts)"
             );
             category = "52W Low Reversal Candidate";
         }
@@ -321,7 +341,7 @@ public class TacticalFeatureEngineer
             double momentumBonus = Math.Clamp(velocityFactor + rsiFactor, 5.0, 25.0);
             score += momentumBonus;
             triggers.Add(
-                $"MOMENTUM_ACCELERATION: Outward price movement backed by strong multi-day momentum indicators. (+{momentumBonus:0.1} Pts)"
+                $"MOMENTUM_ACCELERATION: Outward price movement backed by strong multi-day momentum indicators. (+{momentumBonus:0.0} Pts)"
             );
             if (category == "Stable / Consolidating")
                 category = "Momentum Breakout";
@@ -334,13 +354,13 @@ public class TacticalFeatureEngineer
             double volumeBonus = Math.Clamp((effectiveMultiplier - 1.0) * 4.0, 2.0, 16.0);
             score += volumeBonus;
             triggers.Add(
-                $"VOLUME_SHOCKER: Trading volume footprint is running {volumeMultiplier:0.1}x above its 20-day baseline. (+{volumeBonus:0.1} Pts)"
+                $"VOLUME_SHOCKER: Trading volume footprint is running {volumeMultiplier:0.0}x above its 20-day baseline. (+{volumeBonus:0.0} Pts)"
             );
 
             if (volumeMultiplier > 8.0)
             {
                 triggers.Add(
-                    $"VOLUME_ANOMALY: {volumeMultiplier:0.1}x is an extreme outlier — in a low-liquidity name this is a manipulation red flag, not a quality signal."
+                    $"VOLUME_ANOMALY: {volumeMultiplier:0.0}x is an extreme outlier — in a low-liquidity name this is a manipulation red flag, not a quality signal."
                 );
             }
         }
@@ -351,7 +371,7 @@ public class TacticalFeatureEngineer
             double squeezeBonus = Math.Clamp(compressionIntensity * 30.0, 5.0, 15.0);
             score += squeezeBonus;
             triggers.Add(
-                $"VOLATILITY_COIL: Deep Bollinger contraction detected (Compression: {compressionIntensity * 100:0.1}%). Price breaking upward. (+{squeezeBonus:0.1} Pts)"
+                $"VOLATILITY_COIL: Deep Bollinger contraction detected (Compression: {compressionIntensity * 100:0.0}%). Price breaking upward. (+{squeezeBonus:0.0} Pts)"
             );
             if (category == "Stable / Consolidating")
                 category = "Volatility Squeeze";
@@ -382,12 +402,12 @@ public class TacticalFeatureEngineer
         {
             score += 20.0;
             triggers.Add(
-                $"ROCKET_BREAKOUT: Extreme velocity detected with consecutive compounding days (+{velocity3D:0.1}% over 3d). (+20.0 Pts)"
+                $"ROCKET_BREAKOUT: Extreme velocity detected with consecutive compounding days (+{velocity3D:0.0}% over 3d). (+20.0 Pts)"
             );
             category = "Rocket Breakout";
         }
 
-        // Pillar G: OBV confirmation / divergence
+        // Pillar G: OBV confirmation / accumulation / divergence
         if (obvConfirming)
         {
             score += 6.0;
@@ -395,22 +415,29 @@ public class TacticalFeatureEngineer
                 "OBV_CONFIRMED: Volume has been net-accumulating in the direction of the recent move — the move looks backed by real participation, not a single-day spike. (+6.0 Pts)"
             );
         }
+        else if (obvAccumulating)
+        {
+            score += 8.0;
+            triggers.Add(
+                "OBV_ACCUMULATION: Price is weak but volume is net-accumulating — an early basing / quiet-buying signal. (+8.0 Pts)"
+            );
+        }
         else if (obvDiverging)
         {
             score -= 10.0;
             triggers.Add(
-                "OBV_DIVERGENCE: Price move is not backed by accumulating volume — historically a warning that a move lacks conviction. (-10.0 Pts)"
+                "OBV_DIVERGENCE: Price is rising but volume is net-distributing — historically a warning that a move lacks conviction. (-10.0 Pts)"
             );
         }
 
-        // Pillar H (NEW): Relative strength leadership vs the broader market
+        // Pillar H: Relative strength leadership vs the broader market (only if benchmark is known)
         bool marketIsWeak = regime != null && regime.RegimeLabel == "Risk-Off";
-        if (relativeStrength20D > 5m && !marketIsWeak)
+        if (hasRegime && relativeStrength20D > 5m && !marketIsWeak)
         {
             double rsBonus = Math.Clamp((double)(relativeStrength20D - 5m) * 0.8, 3.0, 12.0);
             score += rsBonus;
             triggers.Add(
-                $"RELATIVE_STRENGTH_LEADER: Outperforming {(regime?.IndexSymbol ?? "the broader market")} by {relativeStrength20D:0.1} pts over the last 20 sessions — possible rotation into this name. (+{rsBonus:0.1} Pts)"
+                $"RELATIVE_STRENGTH_LEADER: Outperforming {regime!.IndexSymbol} by {relativeStrength20D:0.0} pts over the last 20 sessions — possible rotation into this name. (+{rsBonus:0.0} Pts)"
             );
         }
 
@@ -420,7 +447,7 @@ public class TacticalFeatureEngineer
             double overboughtPenalty = (double)(currentRsi - 76) * 1.5;
             score -= overboughtPenalty;
             triggers.Add(
-                $"RISK_OVEREXTENDED: Momentum values highly saturated. High near-term mean-reversion risk. (-{overboughtPenalty:0.1} Pts)"
+                $"RISK_OVEREXTENDED: Momentum values highly saturated. High near-term mean-reversion risk. (-{overboughtPenalty:0.0} Pts)"
             );
         }
 
@@ -447,10 +474,10 @@ public class TacticalFeatureEngineer
             );
         }
 
-        if (relativeStrength20D < -8m)
+        if (hasRegime && relativeStrength20D < -8m)
         {
             riskFlags.Add(
-                $"Lagging {(regime?.IndexSymbol ?? "the broader market")} by {Math.Abs(relativeStrength20D):0.1} pts over 20 sessions — any bounce here may just be beta catching up, not genuine stock-specific strength."
+                $"Lagging {regime!.IndexSymbol} by {Math.Abs(relativeStrength20D):0.0} pts over 20 sessions — any bounce here may just be beta catching up, not genuine stock-specific strength."
             );
         }
 
@@ -504,7 +531,8 @@ public class TacticalFeatureEngineer
             Math.Round(velocity20D, 2),
             Math.Round(relativeStrength20D, 2),
             Math.Round(currentAdx, 2),
-            trendStrengthLabel
+            trendStrengthLabel,
+            Math.Round(priceChange6M, 2)
         );
 
         var forecast = BuildForwardOutlook(
@@ -512,10 +540,17 @@ public class TacticalFeatureEngineer
             currentAtr,
             velocity3D,
             currentAdx,
-            obvConfirming,
+            obvConfirming || obvAccumulating,
             obvDiverging,
             finalCategory,
             regime
+        );
+
+        var resultQuality = ComputeQuarterlyResultQuality(stock);
+        string divergenceCategory = ClassifyDivergence(
+            resultQuality,
+            priceChange6M,
+            resultQuality.IsReliable && rawPoints.Count >= 126
         );
 
         return new StockTacticalInsight(
@@ -529,14 +564,15 @@ public class TacticalFeatureEngineer
             riskFlags,
             metrics,
             health,
-            forecast
+            forecast,
+            resultQuality,
+            divergenceCategory
         );
     }
 
-    // ---- NEW: rules-based multi-day continuation / expected-move projection ----
+    // ---- Rules-based multi-day continuation / expected-move projection ----
     // Not a trained or backtested model — a transparent composite of trend strength (ADX),
-    // volume confirmation (OBV), setup type persistence, and market regime. Use it to rank
-    // relative confidence across today's scan, not as a probability or price target.
+    // volume confirmation (OBV), setup type persistence, and market regime.
     private static ForwardOutlook BuildForwardOutlook(
         decimal currentPrice,
         decimal atrAbs,
@@ -550,8 +586,11 @@ public class TacticalFeatureEngineer
     {
         double continuation = 50.0;
 
+        // FIX: ADX measures trend strength, not direction. A strong DOWNtrend must not add
+        // upside continuation, so the sign follows the recent price direction.
+        bool bullish = velocity3D > 0;
         if (adx >= 25)
-            continuation += 15;
+            continuation += bullish ? 15 : -15;
         else if (adx < 15)
             continuation -= 12;
 
@@ -563,8 +602,6 @@ public class TacticalFeatureEngineer
         if (regime != null)
             continuation *= regime.RegimeGateMultiplier;
 
-        // Signal-specific persistence adjustment — some setups tend to mean-revert fast,
-        // others tend to build over several sessions.
         switch (category)
         {
             case "Rocket Breakout":
@@ -636,7 +673,7 @@ public class TacticalFeatureEngineer
         );
 
     private static TacticalMetrics EmptyMetrics() =>
-        new(0, 0, false, 0, 0, 0, 0, 0, 0, "Insufficient Data", null, 0, 0, 0, "Insufficient Data");
+        new(0, 0, false, 0, 0, 0, 0, 0, 0, "Insufficient Data", null, 0, 0, 0, "Insufficient Data", 0);
 
     // ---- Fundamental health: balance sheet / ownership / valuation / cash flow gating ----
     private static FundamentalHealthCheck EvaluateFundamentalHealth(StockFundamental stock)
@@ -748,7 +785,7 @@ public class TacticalFeatureEngineer
         if (row?.Values == null || row.Values.Count < 3)
             return (0, false);
 
-        var vals = row.Values.Values.Select(v => SafeParseDecimal(v.Replace("%", ""))).ToList();
+        var vals = row.Values.Values.Select(v => SafeParseDecimal(v)).ToList();
 
         decimal latestDelta = vals[^1] - vals[^2];
         decimal priorDelta = vals[^2] - vals[^3];
@@ -757,13 +794,20 @@ public class TacticalFeatureEngineer
         return (Math.Round(latestDelta, 2), sellingTrend);
     }
 
+    // FIX: annual/periodic values WITHOUT the "TTM" column, so P&L and cash-flow years line up.
+    private static List<decimal> AnnualValues(FinancialRow? row) =>
+        row?.Values?.Where(kv => !kv.Key.Equals("TTM", StringComparison.OrdinalIgnoreCase))
+            .Where(kv => !string.IsNullOrWhiteSpace(kv.Value))
+            .Select(kv => SafeParseDecimal(kv.Value))
+            .ToList() ?? new List<decimal>();
+
     private static bool ComputeProfitConsistency(StockFundamental stock)
     {
         var row = FindRow(stock.ProfitAndLoss, "Net Profit");
         if (row?.Values == null || row.Values.Count == 0)
             return true;
 
-        var recent = row.Values.Values.Select(v => SafeParseDecimal(v)).TakeLast(4).ToList();
+        var recent = AnnualValues(row).TakeLast(4).ToList();
         if (!recent.Any())
             return true;
 
@@ -827,12 +871,9 @@ public class TacticalFeatureEngineer
         if (ocfRow?.Values == null || profitRow?.Values == null)
             return true; // no data — don't penalize on absence
 
-        var ocfRecent = ocfRow.Values.Values.Select(v => SafeParseDecimal(v)).TakeLast(3).ToList();
-        var profitRecent = profitRow
-            .Values.Values.Where(v => v != null)
-            .Select(v => SafeParseDecimal(v))
-            .TakeLast(3)
-            .ToList();
+        // FIX: exclude TTM so the last 3 P&L years align with the last 3 cash-flow years.
+        var ocfRecent = AnnualValues(ocfRow).TakeLast(3).ToList();
+        var profitRecent = AnnualValues(profitRow).TakeLast(3).ToList();
 
         if (!ocfRecent.Any() || !profitRecent.Any())
             return true;
@@ -868,6 +909,236 @@ public class TacticalFeatureEngineer
         return yoyLatest > yoyPrior && yoyLatest > 0;
     }
 
+    private static QuarterlyResultQuality ComputeQuarterlyResultQuality(StockFundamental stock)
+    {
+        var salesRow = FindRow(stock.QuarterlyResults, "Sales");
+        var opProfitRow = FindRow(stock.QuarterlyResults, "Operating Profit");
+        var opmRow = FindRow(stock.QuarterlyResults, "OPM %");
+        var otherIncomeRow = FindRow(stock.QuarterlyResults, "Other Income");
+        var pbtRow = FindRow(stock.QuarterlyResults, "Profit before tax");
+        var taxRow = FindRow(stock.QuarterlyResults, "Tax %");
+        var netProfitRow = FindRow(stock.QuarterlyResults, "Net Profit");
+        var epsRow = FindRow(stock.QuarterlyResults, "EPS in Rs");
+
+        if (
+            salesRow?.Values == null
+            || salesRow.Values.Count < 6
+            || netProfitRow?.Values == null
+            || netProfitRow.Values.Count < 6
+        )
+            return EmptyQuarterlyResultQuality();
+
+        List<decimal> Vals(FinancialRow? row) =>
+            row?.Values?.Values.Select(SafeParseDecimal).ToList() ?? new List<decimal>();
+
+        var sales = Vals(salesRow);
+        var opProfit = Vals(opProfitRow);
+        var opm = Vals(opmRow);
+        var otherIncome = Vals(otherIncomeRow);
+        var pbt = Vals(pbtRow);
+        var tax = Vals(taxRow);
+        var netProfit = Vals(netProfitRow);
+        var eps = Vals(epsRow);
+
+        decimal Yoy(List<decimal> vals, int idx) =>
+            vals.Count > idx && idx - 4 >= 0 && vals[idx - 4] != 0
+                ? (vals[idx] - vals[idx - 4]) / Math.Abs(vals[idx - 4]) * 100
+                : 0;
+
+        int lastIdx = sales.Count - 1;
+
+        decimal revenueYoy = Yoy(sales, lastIdx);
+        decimal opProfitYoy = opProfit.Count > lastIdx ? Yoy(opProfit, lastIdx) : 0;
+        decimal netProfitYoy = Yoy(netProfit, netProfit.Count - 1);
+        decimal netProfitYoyPrior = Yoy(netProfit, netProfit.Count - 2);
+        decimal epsYoy = eps.Count > lastIdx ? Yoy(eps, lastIdx) : netProfitYoy;
+
+        // OPM % / Tax % now parse correctly because SafeParseDecimal strips "%".
+        decimal opmLatest = opm.Count > lastIdx ? opm[lastIdx] : 0;
+        decimal opmYoyChangePts =
+            opm.Count > lastIdx && lastIdx - 4 >= 0 ? opmLatest - opm[lastIdx - 4] : 0;
+
+        decimal otherIncomeShare = 0,
+            otherIncomeSharePrior = 0;
+        if (otherIncome.Count > lastIdx && pbt.Count > lastIdx && pbt[lastIdx] > 0)
+            otherIncomeShare = otherIncome[lastIdx] / pbt[lastIdx] * 100;
+        if (
+            otherIncome.Count > lastIdx
+            && pbt.Count > lastIdx
+            && lastIdx - 4 >= 0
+            && pbt[lastIdx - 4] > 0
+        )
+            otherIncomeSharePrior = otherIncome[lastIdx - 4] / pbt[lastIdx - 4] * 100;
+        bool otherIncomeDriven = (otherIncomeShare - otherIncomeSharePrior) > 10 && netProfitYoy > 0;
+
+        decimal taxRateLatest = tax.Count > lastIdx ? tax[lastIdx] : 0;
+        decimal taxRateChangePts =
+            tax.Count > lastIdx && lastIdx - 4 >= 0 ? taxRateLatest - tax[lastIdx - 4] : 0;
+        bool taxRateDriven = taxRateChangePts < -5 && netProfitYoy > opProfitYoy + 10;
+
+        int revStreak = 0;
+        for (int i = lastIdx; i >= 4 && revStreak < 8; i--)
+            if (Yoy(sales, i) > 0)
+                revStreak++;
+            else
+                break;
+
+        int profitStreak = 0;
+        for (int i = netProfit.Count - 1; i >= 4 && profitStreak < 8; i--)
+            if (Yoy(netProfit, i) > 0)
+                profitStreak++;
+            else
+                break;
+
+        bool isAccelerating = netProfitYoy > netProfitYoyPrior && netProfitYoy > 0;
+
+        var signals = new List<string>();
+        double score = 50;
+
+        if (revenueYoy > 15)
+        {
+            score += 10;
+        }
+        else if (revenueYoy < 0)
+        {
+            score -= 15;
+            signals.Add($"Revenue declined YoY ({revenueYoy:0.0}%) despite any profit growth.");
+        }
+
+        if (opProfitYoy > 15)
+        {
+            score += 15;
+        }
+        else if (opProfitYoy < 0)
+        {
+            score -= 20;
+            signals.Add(
+                $"Operating profit declined YoY ({opProfitYoy:0.0}%) — the core business weakened even if net profit didn't show it."
+            );
+        }
+
+        if (opmYoyChangePts > 1)
+        {
+            score += 10;
+            signals.Add(
+                $"Margins expanded {opmYoyChangePts:0.0} pts YoY — growth is getting more profitable, not just bigger."
+            );
+        }
+        else if (opmYoyChangePts < -1)
+        {
+            score -= 10;
+            signals.Add($"Margins contracted {Math.Abs(opmYoyChangePts):0.0} pts YoY.");
+        }
+
+        if (epsYoy > 15)
+        {
+            score += 10;
+        }
+        else if (epsYoy < 0)
+        {
+            score -= 10;
+            signals.Add(
+                $"EPS growth ({epsYoy:0.0}%) is weaker than headline profit growth — check for share dilution."
+            );
+        }
+
+        score += Math.Min(revStreak, 4) * 3;
+        score += Math.Min(profitStreak, 4) * 3;
+
+        if (otherIncomeDriven)
+        {
+            score -= 15;
+            signals.Add(
+                $"Other Income's share of pre-tax profit jumped {otherIncomeShare - otherIncomeSharePrior:0.0} pts YoY — a meaningful part of the profit beat may be non-operational."
+            );
+        }
+
+        if (taxRateDriven)
+        {
+            score -= 15;
+            signals.Add(
+                $"Effective tax rate fell {Math.Abs(taxRateChangePts):0.0} pts YoY while net profit outgrew operating profit by {netProfitYoy - opProfitYoy:0.0} pts — a lower tax bill is doing real work here, not just operations."
+            );
+        }
+
+        if (isAccelerating)
+        {
+            score += 8;
+        }
+
+        return new QuarterlyResultQuality(
+            Math.Round(revenueYoy, 2),
+            Math.Round(opProfitYoy, 2),
+            Math.Round(netProfitYoy, 2),
+            Math.Round(epsYoy, 2),
+            Math.Round(opmLatest, 2),
+            Math.Round(opmYoyChangePts, 2),
+            Math.Round(otherIncomeShare, 2),
+            otherIncomeDriven,
+            Math.Round(taxRateLatest, 2),
+            Math.Round(taxRateChangePts, 2),
+            taxRateDriven,
+            revStreak,
+            profitStreak,
+            isAccelerating,
+            Math.Clamp(Math.Round(score, 1), 0, 100),
+            IsReliable: true,
+            signals
+        );
+    }
+
+    private static QuarterlyResultQuality EmptyQuarterlyResultQuality() =>
+        new(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            false,
+            0,
+            0,
+            false,
+            0,
+            0,
+            false,
+            50,
+            IsReliable: false,
+            new List<string>()
+        );
+
+    // FIX: a high QualityScore alone (padded by streak/revenue points) let stocks with
+    // NEGATIVE net profit growth through. Now genuine growth on every line is required.
+    // Note: banks/NBFCs/insurers have no "Operating Profit" row, so they classify as Neutral.
+    private static string ClassifyDivergence(
+        QuarterlyResultQuality q,
+        decimal priceChange6M,
+        bool reliable
+    )
+    {
+        if (!reliable)
+            return "Insufficient Data";
+
+        bool genuineGrowth =
+            q.RevenueYoyGrowth > 10
+            && q.OperatingProfitYoyGrowth > 10
+            && q.NetProfitYoyGrowth > 10
+            && q.EpsYoyGrowth > 0
+            && !q.OtherIncomeDriven
+            && !q.TaxRateDriven
+            && q.ConsecutiveQuartersProfitGrowth >= 2;
+
+        // priceChange6M > -20 avoids falling knives and unadjusted split/demerger artefacts.
+        if (genuineGrowth && q.QualityScore >= 75 && priceChange6M > -20m && priceChange6M < 15m)
+            return "Potential Multibagger";
+        if (q.QualityScore >= 65 && priceChange6M > 40m)
+            return "Re-Rated Compounder";
+        if (q.QualityScore <= 35 && priceChange6M < -25m)
+            return "Structural Decliner";
+        return "Neutral";
+    }
+
     private static FinancialRow? FindRow(List<FinancialRow>? rows, string metric) =>
         rows?.FirstOrDefault(r => r.Metric.Equals(metric, StringComparison.OrdinalIgnoreCase));
 
@@ -887,12 +1158,13 @@ public class TacticalFeatureEngineer
         return lastEntry == null ? null : SafeParseDecimal(lastEntry);
     }
 
+    // FIX: strips "%" (OPM %, Tax %, shareholding) which previously failed to parse and returned 0.
     private static decimal SafeParseDecimal(string val)
     {
         if (string.IsNullOrWhiteSpace(val))
             return 0;
         decimal.TryParse(
-            val.Replace(",", ""),
+            val.Replace(",", "").Replace("%", "").Trim(),
             NumberStyles.Any,
             CultureInfo.InvariantCulture,
             out var result
